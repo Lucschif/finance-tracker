@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="kpi-grid">
+
+  <div class="glass-card">
+    <div class="kpi-label">Net Worth (Live)</div>
+    <div class="kpi-value {% if live_nw >= 0 %}positive{% else %}danger{% endif %}">
+      {{ live_nw | format_currency }}
+    </div>
+    <div class="kpi-sub">all accounts + transactions</div>
+  </div>
+
+  <div class="glass-card">
+    <div class="kpi-label">Baseline</div>
+    <div class="kpi-value accent">{{ initial_balance | format_currency }}</div>
+    <div class="kpi-sub">initial account balances</div>
+  </div>
+
+  <div class="glass-card">
+    <div class="kpi-label">Monthly Net Worth Change</div>
+    <div class="kpi-value {% if monthly_change >= 0 %}positive{% else %}danger{% endif %}">
+      {% if monthly_change >= 0 %}+{% endif %}{{ monthly_change | format_currency }}
+    </div>
+    <div class="kpi-sub">{{ monthly.month }}</div>
+  </div>
+
+  <div class="glass-card">
+    <div class="kpi-label">Monthly Cash Flow</div>
+    <div class="kpi-value {% if monthly.net_cashflow >= 0 %}positive{% else %}danger{% endif %}">
+      {{ monthly.net_cashflow | format_currency }}
+    </div>
+    <div class="kpi-sub">{{ monthly.month }} income minus expenses</div>
+  </div>
+
+</div>
+
+{% if accounts %}
+<div class="glass-card" style="margin-bottom: 20px;">
+  <div class="section-header">Account Balances (Baseline)</div>
+  {% for account in accounts %}
+  <div class="cat-row">
+    <div class="cat-name" style="text-transform: capitalize;">{{ account.name }}</div>
+    <div class="cat-track">
+      <div class="cat-fill {% if loop.first %}top{% endif %}"
+           style="width: {% if initial_balance > 0 %}{{ ((account.initial_balance / initial_balance) * 100) | round(1) }}{% else %}50{% endif %}%"></div>
+    </div>
+    <div class="cat-amount">{{ account.initial_balance | format_currency }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="glass-card" style="margin-bottom: 20px;">
+  <div class="section-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <span>Net Worth Over Time</span>
+    <span style="display:flex;gap:6px;align-items:center;">
+      {% for r in chart_ranges %}
+      <a href="/?range={{ r }}"
+         style="font-size:12px;padding:5px 9px;border-radius:6px;text-decoration:none;
+                border:1px solid rgba(255,255,255,0.12);
+                color:{% if selected_range == r %}#fff{% else %}var(--text-secondary){% endif %};
+                background:{% if selected_range == r %}rgba(63,90,245,0.35){% else %}rgba(255,255,255,0.04){% endif %};">
+        {{ r }}
+      </a>
+      {% endfor %}
+    </span>
+  </div>
+
+  {% if chart_values | length >= 2 %}
+  <div style="position: relative; height: 240px; margin-top: 16px;">
+    <canvas id="nwChart"></canvas>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+    (function () {
+      const ctx = document.getElementById('nwChart');
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: {{ chart_labels | tojson }},
+          datasets: [{
+            label: 'Net Worth',
+            data: {{ chart_values | tojson }},
+            borderColor: '#3F5AF5',
+            backgroundColor: 'rgba(63,90,245,0.08)',
+            fill: true,
+            tension: 0.4,
+            pointBackgroundColor: '#3F5AF5',
+            pointBorderColor: '#3F5AF5',
+            pointRadius: 3,
+            pointHoverRadius: 6,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: 'rgba(8,12,20,0.9)',
+              borderColor: 'rgba(255,255,255,0.1)',
+              borderWidth: 1,
+              callbacks: {
+                label: function (c) {
+                  return '€' + c.parsed.y.toLocaleString('en-IE', { minimumFractionDigits: 2 });
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: 'rgba(255,255,255,0.45)', font: { size: 11 } },
+              grid: { color: 'rgba(255,255,255,0.05)' }
+            },
+            y: {
+              ticks: {
+                color: 'rgba(255,255,255,0.45)',
+                font: { size: 11 },
+                callback: function (v) { return '€' + v.toLocaleString(); }
+              },
+              grid: { color: 'rgba(255,255,255,0.05)' }
+            }
+          }
+        }
+      });
+    })();
+  </script>
+  {% else %}
+  <p style="color: var(--text-secondary); font-size: 14px; margin-top: 16px; line-height: 1.7;">
+    No transaction history yet. Log transactions via the Telegram bot to see your net worth trend.<br>
+    e.g. <code style="background:rgba(255,255,255,0.08);padding:2px 8px;border-radius:4px;">+2400 salary</code>
+    or <code style="background:rgba(255,255,255,0.08);padding:2px 8px;border-radius:4px;">14 kebab</code>
+  </p>
+  {% endif %}
+</div>
+
+<div class="glass-card">
+  <div class="section-header">Net Worth Activity</div>
+  {% if activity_feed %}
+  <div class="activity-feed">
+    {% for event in activity_feed %}
+    <div class="activity-item">
+      <div class="activity-icon {{ event.event_type }}">
+        {% if event.event_type == "income" %}+{% elif event.event_type == "expense" %}-{% else %}→{% endif %}
+      </div>
+      <div class="activity-main">
+        <div class="activity-topline">
+          <span class="activity-type">{{ event.event_type }}</span>
+          <span class="activity-time">{{ event.timestamp[:10] }}</span>
+          {% if event.is_impulse %}<span class="pill impulse" style="font-size:10px;padding:1px 7px;">impulse</span>{% endif %}
+        </div>
+        <div class="activity-description">{{ event.description }}</div>
+      </div>
+      <div class="activity-amount">
+        <div class="activity-impact {% if event.impact > 0 %}positive{% elif event.impact < 0 %}danger{% else %}neutral{% endif %}">
+          {% if event.impact > 0 %}+{% endif %}{{ event.impact | format_currency }}
+        </div>
+        <div class="activity-value">{{ event.amount | format_currency }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p style="color: var(--text-secondary); font-size: 14px;">
+    No transactions yet. Send a message to your Telegram bot to get started.
+  </p>
+  {% endif %}
+</div>
+
+{% endblock %}

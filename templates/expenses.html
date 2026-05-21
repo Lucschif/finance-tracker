@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="kpi-grid">
+
+  <div class="glass-card">
+    <div class="kpi-label">Weekly Spent</div>
+    <div class="kpi-value {{ weekly.pct_used | budget_color }}">
+      {{ weekly.weekly_spent | format_currency }}
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill {{ weekly.pct_used | budget_color }}"
+           style="width: {% if weekly.pct_used > 100 %}100{% else %}{{ weekly.pct_used | round(1) }}{% endif %}%"></div>
+    </div>
+    <div class="kpi-sub">of {{ weekly.weekly_budget | format_currency }} budget</div>
+  </div>
+
+  <div class="glass-card">
+    <div class="kpi-label">Weekly Remaining</div>
+    <div class="kpi-value {% if weekly.remaining == 0 %}danger{% else %}accent{% endif %}">
+      {{ weekly.remaining | format_currency }}
+    </div>
+    <div class="kpi-sub">
+      {% if weekly.pct_used <= 100 %}{{ (100 - weekly.pct_used) | round | int }}% remaining{% else %}over budget{% endif %}
+    </div>
+  </div>
+
+  <div class="glass-card">
+    <div class="kpi-label">Monthly Spent</div>
+    <div class="kpi-value">{{ monthly.monthly_spent | format_currency }}</div>
+    <div class="kpi-sub">{{ monthly.month }}</div>
+  </div>
+
+  <div class="glass-card">
+    <div class="kpi-label">Monthly Income</div>
+    <div class="kpi-value positive">{{ monthly.monthly_income | format_currency }}</div>
+    <div class="kpi-sub">this month</div>
+  </div>
+
+  <div class="glass-card">
+    <div class="kpi-label">Net Cash Flow</div>
+    <div class="kpi-value {% if monthly.net_cashflow >= 0 %}positive{% else %}danger{% endif %}">
+      {{ monthly.net_cashflow | format_currency }}
+    </div>
+    <div class="kpi-sub">income − expenses</div>
+  </div>
+
+</div>
+
+<div class="glass-card">
+  <div class="section-header">Recent Expense Ledger</div>
+  {% if recent_transactions %}
+  <table class="glass-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Description</th>
+        <th>Category</th>
+        <th>Amount</th>
+        <th>Type</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in recent_transactions %}
+      <tr class="{{ 'undone' if '[UNDONE]' in (t.note or '') else '' }}">
+        <td>{{ t.date }}</td>
+        <td>{{ t.note or '—' }}</td>
+        <td><span class="pill">{{ t.category }}</span></td>
+        <td>{{ t.amount | format_currency }}</td>
+        <td>
+          <span class="pill {{ t.type | lower }}">{{ t.type }}</span>
+          {% if t.is_impulse %}<span class="pill impulse" style="margin-left:4px">impulse</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color: var(--text-secondary); font-size: 14px;">No transactions yet. Send a message to your bot to get started.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

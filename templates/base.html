@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Finance Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <span class="nav-logo">Life OS</span>
+    <a href="/" class="{{ 'active' if active_page == 'financials' else '' }}">Financials</a>
+    <a href="/expenses" class="{{ 'active' if active_page == 'expenses' else '' }}">Expenses</a>
+    <a href="/categories" class="{{ 'active' if active_page == 'categories' else '' }}">Categories</a>
+    <a href="/transactions" class="{{ 'active' if active_page == 'transactions' else '' }}">Transactions</a>
+  </nav>
+  <div class="container">
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

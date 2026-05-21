@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="glass-card" style="margin-bottom: 20px;">
+  <div class="section-header">Filter</div>
+  <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+    <select name="type">
+      <option value="">All Types</option>
+      <option value="income" {% if filter_type == 'income' %}selected{% endif %}>Income</option>
+      <option value="expense" {% if filter_type == 'expense' %}selected{% endif %}>Expense</option>
+      <option value="transfer" {% if filter_type == 'transfer' %}selected{% endif %}>Transfer</option>
+    </select>
+    <select name="category">
+      <option value="">All Categories</option>
+      {% for cat in categories %}
+      <option value="{{ cat }}" {% if filter_category == cat %}selected{% endif %}>{{ cat }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn">Apply</button>
+    {% if filter_type or filter_category %}
+    <a href="/transactions" class="btn" style="text-decoration:none;">Clear</a>
+    {% endif %}
+  </form>
+</div>
+
+<div class="glass-card">
+  <div class="section-header">
+    All Transactions — newest first
+    {% if filter_type or filter_category %}
+    <span style="color:var(--brand-blue);margin-left:8px;">
+      (filtered{% if filter_type %}: {{ filter_type }}{% endif %}{% if filter_category %}, {{ filter_category }}{% endif %})
+    </span>
+    {% endif %}
+  </div>
+
+  {% if transactions %}
+  <table class="glass-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Type</th>
+        <th>Amount</th>
+        <th>Description</th>
+        <th>Category</th>
+        <th>Impulse</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in transactions %}
+      <tr class="{{ 'undone' if '[UNDONE]' in (t.note or '') else '' }}">
+        <td>{{ t.date }}</td>
+        <td><span class="pill {{ t.type | lower }}">{{ t.type }}</span></td>
+        <td>{{ t.amount | format_currency }}</td>
+        <td>{{ t.note or '—' }}</td>
+        <td><span class="pill">{{ t.category }}</span></td>
+        <td>{% if t.is_impulse %}<span class="pill impulse">yes</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color: var(--text-secondary); font-size: 14px;">No transactions found.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

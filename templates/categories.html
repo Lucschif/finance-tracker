@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="kpi-grid" style="margin-bottom: 28px;">
+
+  <div class="glass-card">
+    <div class="kpi-label">Total Spent</div>
+    <div class="kpi-value">{{ monthly.monthly_spent | format_currency }}</div>
+    <div class="kpi-sub">{{ monthly.month }}</div>
+  </div>
+
+  <div class="glass-card">
+    <div class="kpi-label">Impulse Spending</div>
+    <div class="kpi-value {% if monthly.impulse_total > 0 %}danger{% else %}positive{% endif %}">
+      {{ monthly.impulse_total | format_currency }}
+    </div>
+    <div class="kpi-sub">marked as impulse</div>
+  </div>
+
+  {% if top_category %}
+  <div class="glass-card">
+    <div class="kpi-label">Biggest Category</div>
+    <div class="kpi-value" style="font-size: 20px;">{{ top_category }}</div>
+    <div class="kpi-sub">{{ monthly.by_category[top_category] | format_currency }}</div>
+  </div>
+  {% endif %}
+
+</div>
+
+<div class="glass-card">
+  <div class="section-header">Spending by Category — {{ monthly.month }}</div>
+  {% if monthly.by_category %}
+    {% for cat, amount in monthly.by_category.items() %}
+    <div class="cat-row">
+      <div class="cat-name">{{ cat }}</div>
+      <div class="cat-track">
+        <div class="cat-fill {{ 'top' if cat == top_category else '' }}"
+             style="width: {{ ((amount / max_amount) * 100) | round(1) }}%"></div>
+      </div>
+      <div class="cat-amount">{{ amount | format_currency }}</div>
+    </div>
+    {% endfor %}
+  {% else %}
+  <p style="color: var(--text-secondary); font-size: 14px;">No expenses this month yet.</p>
+  {% endif %}
+</div>
+
+{% endblock %}
