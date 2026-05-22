@@ -167,36 +167,6 @@ async def health():
     return {"status": "ok"}
 
 
-@app.get("/debug/prices")
-async def debug_prices():
-    import yfinance as yf
-    results = {}
-
-    # FX rate
-    try:
-        fx_ticker = yf.Ticker("USDEUR=X")
-        fx_rate = fx_ticker.fast_info.last_price
-        results["USDEUR"] = fx_rate
-    except Exception as e:
-        results["USDEUR"] = f"error: {e}"
-
-    for ticker in ["QUBIC-USD", "SOL-USD"]:
-        try:
-            t = yf.Ticker(ticker)
-            fast = t.fast_info.last_price
-            currency = getattr(t.fast_info, "currency", None)
-            fx = results.get("USDEUR")
-            converted = fast * fx if fast and fx else None
-            results[ticker] = {
-                "fast_price": fast,
-                "currency": currency,
-                "fx_rate": fx,
-                "eur_price": converted,
-                "prices_module": prices_module.get_price_eur(ticker, "crypto"),
-            }
-        except Exception as e:
-            results[ticker] = {"error": str(e)}
-    return results
 
 
 @app.get("/ping")
@@ -240,17 +210,18 @@ async def financials_page(request: Request, _: None = Depends(_auth)):
     # Net worth = cash baseline + transaction delta + live investments
     cash_baseline = sum(a.initial_balance or 0 for a in accounts if a.name.lower() == "cash")
     inv_baseline  = sum(a.initial_balance or 0 for a in accounts if a.name.lower() != "cash")
-    if holdings:
-        investments_value = portfolio["total"]
-    else:
-        investments_value = inv_baseline
+    investments_value = portfolio["total"] if holdings else inv_baseline
     live_nw = cash_baseline + total_income - total_expense + investments_value
+    full_baseline = cash_baseline + investments_value
+
+    # Rebuild chart with full baseline (cash + portfolio)
+    chart_labels, chart_values = _build_chart_data(all_txns, full_baseline, range_str)
 
     return templates.TemplateResponse(request, "financials.html", {
         "active_page": "financials",
         "live_nw": live_nw,
-        "initial_balance": initial_balance,
-        "accounts": accounts,
+        "initial_balance": full_baseline,
+        "accounts": [a for a in accounts if (a.initial_balance or 0) > 0],
         "portfolio": portfolio,
         "monthly_change": monthly["net_cashflow"],
         "monthly": monthly,
