@@ -355,4 +355,13 @@ select option {
   .activity-item { grid-template-columns: 30px 1fr; }
   .activity-amount { grid-column: 2; min-width: 0; text-align: left; }
   .cat-name { width: 90px; }
+
+  /* hide non-essential table columns */
+  .hide-mobile { display: none !important; }
+
+  /* portfolio breakdown: stack chart above legend */
+  .portfolio-breakdown-grid {
+    grid-template-columns: 1fr !important;
+    justify-items: center;
+  }
 }

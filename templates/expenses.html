@@ -53,21 +53,21 @@
   <table class="glass-table">
     <thead>
       <tr>
-        <th>Date</th>
+        <th class="hide-mobile">Date</th>
         <th>Description</th>
         <th>Category</th>
         <th>Amount</th>
-        <th>Type</th>
+        <th class="hide-mobile">Type</th>
       </tr>
     </thead>
     <tbody>
       {% for t in recent_transactions %}
       <tr class="{{ 'undone' if '[UNDONE]' in (t.note or '') else '' }}">
-        <td>{{ t.date }}</td>
+        <td class="hide-mobile">{{ t.date }}</td>
         <td>{{ t.note or '—' }}</td>
         <td><span class="pill">{{ t.category }}</span></td>
         <td>{{ t.amount | format_currency }}</td>
-        <td>
+        <td class="hide-mobile">
           <span class="pill {{ t.type | lower }}">{{ t.type }}</span>
           {% if t.is_impulse %}<span class="pill impulse" style="margin-left:4px">impulse</span>{% endif %}
         </td>

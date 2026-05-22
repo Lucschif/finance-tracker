@@ -42,8 +42,8 @@
   <table class="glass-table">
     <thead>
       <tr>
-        <th>Symbol</th>
-        <th>Qty</th>
+        <th>Asset</th>
+        <th class="hide-mobile">Qty</th>
         <th>Price</th>
         <th style="text-align:right">Value</th>
       </tr>
@@ -52,12 +52,10 @@
       {% for item in portfolio.holdings %}
       <tr>
         <td>
-          <strong>{{ item.symbol }}</strong>
-          {% if item.name != item.symbol %}
-          <span style="color:var(--text-secondary);font-size:12px;margin-left:6px;">{{ item.name }}</span>
-          {% endif %}
+          <strong>{{ item.name if item.name and item.name != item.symbol else (item.symbol | replace("-EUR","") | replace("-USD","") | replace("-GBP","")) }}</strong>
+          <span style="color:var(--text-secondary);font-size:11px;display:block;">{{ item.symbol | replace("-EUR","") | replace("-USD","") | replace("-GBP","") }}</span>
         </td>
-        <td style="color:var(--text-secondary)">{{ item.quantity }}</td>
+        <td class="hide-mobile" style="color:var(--text-secondary)">{{ item.quantity }}</td>
         <td>{% if item.price is not none %}{{ item.price | format_currency }}{% else %}<span style="color:var(--text-secondary)">n/a</span>{% endif %}</td>
         <td style="text-align:right;font-weight:600;">{% if item.value is not none %}{{ item.value | format_currency }}{% else %}—{% endif %}</td>
       </tr>
@@ -230,7 +228,7 @@
     <span>Portfolio Breakdown</span>
     <span style="font-size:12px;color:var(--text-secondary);">{{ portfolio.total | format_currency }} total</span>
   </div>
-  <div style="display:grid;grid-template-columns:160px 1fr;gap:28px;align-items:center;margin-top:16px;">
+  <div class="portfolio-breakdown-grid" style="display:grid;grid-template-columns:160px 1fr;gap:28px;align-items:center;margin-top:16px;">
     <div style="position:relative;width:160px;height:160px;">
       <canvas id="portfolioChart" width="160" height="160"></canvas>
     </div>
