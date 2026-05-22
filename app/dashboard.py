@@ -171,17 +171,29 @@ async def health():
 async def debug_prices():
     import yfinance as yf
     results = {}
-    for ticker in ["QUBIC-USD", "SOL-USD", "VWCE.DE"]:
+
+    # FX rate
+    try:
+        fx_ticker = yf.Ticker("USDEUR=X")
+        fx_rate = fx_ticker.fast_info.last_price
+        results["USDEUR"] = fx_rate
+    except Exception as e:
+        results["USDEUR"] = f"error: {e}"
+
+    for ticker in ["QUBIC-USD", "SOL-USD"]:
         try:
             t = yf.Ticker(ticker)
             fast = t.fast_info.last_price
             currency = getattr(t.fast_info, "currency", None)
-            try:
-                hist = t.history(period="1d")
-                hist_close = float(hist["Close"].iloc[-1]) if not hist.empty else None
-            except Exception as he:
-                hist_close = f"error: {he}"
-            results[ticker] = {"fast_price": fast, "currency": currency, "hist_close": hist_close}
+            fx = results.get("USDEUR")
+            converted = fast * fx if fast and fx else None
+            results[ticker] = {
+                "fast_price": fast,
+                "currency": currency,
+                "fx_rate": fx,
+                "eur_price": converted,
+                "prices_module": prices_module.get_price_eur(ticker, "crypto"),
+            }
         except Exception as e:
             results[ticker] = {"error": str(e)}
     return results
