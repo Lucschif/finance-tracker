@@ -1,6 +1,7 @@
 EXPENSE_CATEGORIES = [
     "Food", "Transport", "Entertainment", "Clothing", "Education",
     "Health", "Personal Care", "Subscriptions", "Housing", "Travel",
+    "Website Business",
 ]
 INCOME_CATEGORIES = ["Income"]
 TRANSFER_CATEGORIES = ["To Investments", "From Investments"]
@@ -43,7 +44,12 @@ _KEYWORDS: dict[str, list[str]] = {
     ],
     "Housing": [
         "housing", "rent", "utilities", "electricity", "water", "internet",
-        "phone", "bill", "mortgage", "insurance", "repair", "maintenance",
+        "phone", "bill", "bills", "mortgage", "insurance", "repair", "maintenance",
+    ],
+    "Website Business": [
+        "website", "domain", "hosting", "business insurance", "saas",
+        "server", "vps", "ssl", "cloudflare", "aws", "vercel", "render",
+        "stripe", "software license", "web hosting",
     ],
     "Travel": [
         "travel", "flight", "hotel", "airbnb", "vacation", "holiday",

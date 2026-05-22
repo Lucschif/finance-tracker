@@ -21,7 +21,7 @@ Return ONLY a JSON object with these exact fields:
 
 Valid categories:
   Expense: Food, Transport, Entertainment, Clothing, Education, Health, \
-Personal Care, Subscriptions, Housing, Travel
+Personal Care, Subscriptions, Housing, Travel, Website Business
   Income: Income
   Transfer: To Investments, From Investments
 
@@ -31,13 +31,19 @@ Rules:
 - "from investments" or similar → transfer, "From Investments"
 - "impulse" keyword → is_impulse=true
 - Default to expense if unclear
+- Website Business: anything related to websites, domains, hosting, SaaS tools, business insurance, software, servers
+- Housing: rent, utilities, electricity, water, phone bills, home insurance, repairs
+- note must be SHORT and clean — strip any leading filler words like "spent on", "paid for", "bought", "got"
 
 Examples:
-  "14 kebab"             → {"amount":14,"type":"expense","category":"Food","note":"kebab","is_impulse":false}
-  "spent 40 groceries"  → {"amount":40,"type":"expense","category":"Food","note":"groceries","is_impulse":false}
-  "+2400 salary"        → {"amount":2400,"type":"income","category":"Income","note":"salary","is_impulse":false}
-  "100 to investments"  → {"amount":100,"type":"transfer","category":"To Investments","note":"to investments","is_impulse":false}
-  "40 clothes impulse"  → {"amount":40,"type":"expense","category":"Clothing","note":"clothes","is_impulse":true}
+  "14 kebab"                                   → {"amount":14,"type":"expense","category":"Food","note":"kebab","is_impulse":false}
+  "spent 40 groceries"                         → {"amount":40,"type":"expense","category":"Food","note":"groceries","is_impulse":false}
+  "+2400 salary"                               → {"amount":2400,"type":"income","category":"Income","note":"salary","is_impulse":false}
+  "100 to investments"                         → {"amount":100,"type":"transfer","category":"To Investments","note":"to investments","is_impulse":false}
+  "40 clothes impulse"                         → {"amount":40,"type":"expense","category":"Clothing","note":"clothes","is_impulse":true}
+  "34.60 spent on website business insurance"  → {"amount":34.60,"type":"expense","category":"Website Business","note":"website business insurance","is_impulse":false}
+  "20 domain renewal"                          → {"amount":20,"type":"expense","category":"Website Business","note":"domain renewal","is_impulse":false}
+  "120 home insurance"                         → {"amount":120,"type":"expense","category":"Housing","note":"home insurance","is_impulse":false}
 
 Return only valid JSON, no other text."""
 
@@ -99,10 +105,12 @@ def _validate(data: dict) -> dict | None:
     category = data.get("category", "Food")
     if category not in ALL_CATEGORIES:
         category = "Food"
+    note = str(data.get("note") or "")
+    note = re.sub(r"^(?:spent\s+on|paid\s+for|bought|spent|got|purchased)\s+", "", note, flags=re.IGNORECASE).strip()
     return {
         "amount": round(amount, 2),
         "type": type_,
         "category": category,
-        "note": str(data.get("note") or "")[:200],
+        "note": note[:200],
         "is_impulse": bool(data.get("is_impulse", False)),
     }
