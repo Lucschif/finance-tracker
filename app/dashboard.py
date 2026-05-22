@@ -220,6 +220,8 @@ async def financials_page(request: Request, _: None = Depends(_auth)):
     return templates.TemplateResponse(request, "financials.html", {
         "active_page": "financials",
         "live_nw": live_nw,
+        "cash_baseline": cash_baseline,
+        "investments_value": investments_value,
         "initial_balance": full_baseline,
         "accounts": [a for a in accounts if (a.initial_balance or 0) > 0],
         "portfolio": portfolio,
