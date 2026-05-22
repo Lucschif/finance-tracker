@@ -65,17 +65,23 @@ def _yfinance(ticker: str) -> float | None:
     try:
         import yfinance as yf
         t = yf.Ticker(ticker)
+
+        # Try fast_info first, fall back to history for low-cap assets
         price = t.fast_info.last_price
         if price is None:
-            return None
-        currency = getattr(t.fast_info, "currency", "EUR") or "EUR"
+            hist = t.history(period="1d")
+            if hist.empty:
+                return None
+            price = float(hist["Close"].iloc[-1])
+
+        currency = getattr(t.fast_info, "currency", None) or "USD"
         if currency.upper() != "EUR":
             rate = _fx_to_eur(currency.upper())
             if rate is None:
                 logger.warning("No FX rate for %s → EUR", currency)
                 return None
             price = price * rate
-        return round(float(price), 4)
+        return round(float(price), 6)
     except Exception as exc:
         logger.warning("yfinance failed for %s: %s", ticker, exc)
         return None
