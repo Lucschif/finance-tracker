@@ -16,6 +16,7 @@ from app import budget as budget_module
 from app import categories as categories_module
 from app import config
 from app import database as db
+from app import prices as prices_module
 
 _ptb_app = None
 
@@ -192,20 +193,33 @@ async def financials_page(request: Request, _: None = Depends(_auth)):
 
     with db.get_db() as session:
         accounts = db.get_accounts(session)
+        holdings = db.get_holdings(session)
         initial_balance = sum(a.initial_balance or 0 for a in accounts)
         all_txns = db.get_active_transactions(session)
         total_income = sum(t.amount for t in all_txns if t.type == "income")
         total_expense = sum(t.amount for t in all_txns if t.type == "expense")
-        live_nw = initial_balance + total_income - total_expense
         monthly = budget_module.monthly_summary(session)
         chart_labels, chart_values = _build_chart_data(all_txns, initial_balance, range_str)
         activity_feed = _build_activity_feed(all_txns)
+
+    # Live portfolio value (fetched outside the DB session — may call yfinance)
+    portfolio = prices_module.get_portfolio_value(holdings) if holdings else {"items": [], "total": 0.0}
+
+    # Net worth = cash baseline + transaction delta + live investments
+    cash_baseline = sum(a.initial_balance or 0 for a in accounts if a.name.lower() == "cash")
+    inv_baseline  = sum(a.initial_balance or 0 for a in accounts if a.name.lower() != "cash")
+    if holdings:
+        investments_value = portfolio["total"]
+    else:
+        investments_value = inv_baseline
+    live_nw = cash_baseline + total_income - total_expense + investments_value
 
     return templates.TemplateResponse(request, "financials.html", {
         "active_page": "financials",
         "live_nw": live_nw,
         "initial_balance": initial_balance,
         "accounts": accounts,
+        "portfolio": portfolio,
         "monthly_change": monthly["net_cashflow"],
         "monthly": monthly,
         "chart_labels": chart_labels,

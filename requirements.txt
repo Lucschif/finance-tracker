@@ -7,3 +7,4 @@ psycopg2-binary>=2.9.9
 python-telegram-bot>=21.3
 anthropic>=0.28.0
 python-dotenv>=1.0.1
+yfinance>=0.2.40

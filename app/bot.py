@@ -18,12 +18,16 @@ from app import config
 from app.database import (
     _as_date,
     add_transaction,
+    delete_holding,
     get_accounts,
     get_active_transactions,
     get_db,
+    get_holdings,
     set_account_balance,
     undo_last_transaction,
+    upsert_holding,
 )
+from app import prices as prices_module
 from app.parser import parse_transaction
 
 logger = logging.getLogger(__name__)
@@ -187,6 +191,86 @@ async def cmd_undo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 @_owner_only
+async def cmd_holding(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """
+    Add / update a holding:
+      /holding VWCE.DE 10.5
+      /holding BTC 0.05 crypto
+      /holding VWCE.DE 0 → removes it
+    """
+    args = ctx.args
+    if not args or len(args) < 2:
+        await update.message.reply_text(
+            "*Usage:*\n"
+            "`/holding VWCE.DE 10.5`         — ETF (default)\n"
+            "`/holding BTC 0.05 crypto`       — crypto\n"
+            "`/holding CSPX.L 5 stock`        — stock\n"
+            "`/holding VWCE.DE 0`             — remove holding\n\n"
+            "Use yfinance tickers: VWCE.DE, IWDA.AS, CSPX.L, BTC, ETH…",
+            parse_mode="Markdown",
+        )
+        return
+
+    symbol = args[0].upper()
+    try:
+        quantity = float(args[1].replace(",", "."))
+    except ValueError:
+        await update.message.reply_text("❌ Invalid quantity.")
+        return
+
+    asset_type = args[2].lower() if len(args) > 2 else "etf"
+    if asset_type not in ("etf", "stock", "crypto"):
+        asset_type = "etf"
+
+    if quantity == 0:
+        with get_db() as session:
+            removed = delete_holding(session, symbol)
+        msg = f"🗑 Removed *{symbol}*" if removed else f"❌ *{symbol}* not found."
+        await update.message.reply_text(msg, parse_mode="Markdown")
+        return
+
+    with get_db() as session:
+        upsert_holding(session, symbol, quantity, asset_type)
+
+    price = prices_module.get_price_eur(symbol, asset_type)
+    if price:
+        value = price * quantity
+        await update.message.reply_text(
+            f"✅ *{symbol}* — {quantity:g} units\n"
+            f"   Price: €{price:,.2f}   Value: €{value:,.2f}",
+            parse_mode="Markdown",
+        )
+    else:
+        await update.message.reply_text(
+            f"✅ *{symbol}* saved ({quantity:g} units)\n"
+            f"⚠️ Could not fetch price — check the ticker symbol.",
+            parse_mode="Markdown",
+        )
+
+
+@_owner_only
+async def cmd_holdings(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    with get_db() as session:
+        holdings = get_holdings(session)
+    if not holdings:
+        await update.message.reply_text(
+            "No holdings yet. Add one with:\n`/holding VWCE.DE 10.5`",
+            parse_mode="Markdown",
+        )
+        return
+
+    portfolio = prices_module.get_portfolio_value(holdings)
+    lines = ["*📈 Portfolio*\n"]
+    for item in portfolio["items"]:
+        price_str = f"€{item['price']:,.2f}" if item["price"] else "n/a"
+        value_str = f"€{item['value']:,.2f}" if item["value"] else "n/a"
+        lines.append(f"*{item['symbol']}* ({item['quantity']:g} units)")
+        lines.append(f"   {price_str} × {item['quantity']:g} = {value_str}")
+    lines.append(f"\n💼 *Total: €{portfolio['total']:,.2f}*")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+@_owner_only
 async def cmd_setup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Usage: /setup cash 5000 investments 15000"""
     args = ctx.args
@@ -279,6 +363,8 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 def create_ptb_app() -> Application:
     app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
+    app.add_handler(CommandHandler("holding", cmd_holding))
+    app.add_handler(CommandHandler("holdings", cmd_holdings))
     app.add_handler(CommandHandler("setup", cmd_setup))
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))

@@ -21,6 +21,17 @@ class Base(DeclarativeBase):
     pass
 
 
+class Holding(Base):
+    __tablename__ = "holdings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String, unique=True, nullable=False)   # e.g. VWCE.DE / BTC-EUR
+    name = Column(String, nullable=True)                   # friendly label
+    quantity = Column(Float, nullable=False)
+    asset_type = Column(String, nullable=False, default="etf")  # etf | stock | crypto
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class Account(Base):
@@ -171,6 +182,34 @@ def undo_last_transaction(db: Session) -> Transaction | None:
 
 def get_accounts(db: Session) -> list[Account]:
     return db.query(Account).all()
+
+
+def get_holdings(db: Session) -> list[Holding]:
+    return db.query(Holding).order_by(Holding.asset_type, Holding.symbol).all()
+
+
+def upsert_holding(db: Session, symbol: str, quantity: float,
+                   asset_type: str = "etf", name: str | None = None) -> Holding:
+    h = db.query(Holding).filter(Holding.symbol == symbol.upper()).first()
+    if h:
+        h.quantity = quantity
+        if name:
+            h.name = name
+    else:
+        h = Holding(symbol=symbol.upper(), quantity=quantity,
+                    asset_type=asset_type, name=name)
+        db.add(h)
+    db.flush()
+    return h
+
+
+def delete_holding(db: Session, symbol: str) -> bool:
+    h = db.query(Holding).filter(Holding.symbol == symbol.upper()).first()
+    if h:
+        db.delete(h)
+        db.flush()
+        return True
+    return False
 
 
 def set_account_balance(db: Session, name: str, balance: float) -> Account:
