@@ -158,6 +158,73 @@
   {% endif %}
 </div>
 
+{% if portfolio and portfolio.holdings %}
+<div class="glass-card" style="margin-bottom: 20px;">
+  <div class="section-header" style="display:flex;align-items:center;justify-content:space-between;">
+    <span>Portfolio Breakdown</span>
+    <span style="font-size:12px;color:var(--text-secondary);">{{ portfolio.total | format_currency }} total</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:32px;margin-top:16px;flex-wrap:wrap;">
+    <div style="position:relative;width:200px;height:200px;flex-shrink:0;">
+      <canvas id="portfolioChart"></canvas>
+    </div>
+    <div style="flex:1;min-width:180px;">
+      {% for item in portfolio.holdings %}
+      {% if item.value is not none and item.value > 0 %}
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <div style="width:10px;height:10px;border-radius:50%;background:var(--portfolio-color-{{ loop.index0 % 8 }});flex-shrink:0;"></div>
+        <div style="flex:1;font-size:13px;font-weight:600;">{{ item.symbol }}</div>
+        <div style="font-size:13px;color:var(--text-secondary);">
+          {{ ((item.value / portfolio.total) * 100) | round(1) }}%
+        </div>
+        <div style="font-size:13px;font-weight:600;min-width:80px;text-align:right;">{{ item.value | format_currency }}</div>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  <script>
+    (function () {
+      const ctx2 = document.getElementById('portfolioChart');
+      const colors = [
+        '#3F5AF5','#a78bfa','#34d399','#f59e0b',
+        '#f87171','#38bdf8','#fb923c','#e879f9'
+      ];
+      const labels = [{% for item in portfolio.holdings %}{% if item.value is not none and item.value > 0 %}'{{ item.symbol }}',{% endif %}{% endfor %}];
+      const data   = [{% for item in portfolio.holdings %}{% if item.value is not none and item.value > 0 %}{{ item.value }},{% endif %}{% endfor %}];
+      new Chart(ctx2, {
+        type: 'doughnut',
+        data: {
+          labels: labels,
+          datasets: [{ data: data, backgroundColor: colors.slice(0, labels.length), borderWidth: 0, hoverOffset: 6 }]
+        },
+        options: {
+          responsive: false,
+          cutout: '68%',
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: 'rgba(8,12,20,0.9)',
+              borderColor: 'rgba(255,255,255,0.1)',
+              borderWidth: 1,
+              callbacks: {
+                label: function(c) {
+                  const pct = (c.parsed / data.reduce((a,b)=>a+b,0)*100).toFixed(1);
+                  return ' €' + c.parsed.toLocaleString('en-IE',{minimumFractionDigits:2}) + '  (' + pct + '%)';
+                }
+              }
+            }
+          }
+        }
+      });
+      // inject CSS variables for legend dots
+      const root = document.documentElement;
+      colors.forEach((c,i) => root.style.setProperty('--portfolio-color-'+i, c));
+    })();
+  </script>
+</div>
+{% endif %}
+
 <div class="glass-card">
   <div class="section-header">Net Worth Activity</div>
   {% if activity_feed %}

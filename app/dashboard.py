@@ -88,7 +88,13 @@ def _auth(credentials: HTTPBasicCredentials = Depends(_security)):
 
 def _build_chart_data(txns, initial_balance: float, range_str: str):
     today = date.today()
-    if range_str == "30D":
+    if range_str == "1D":
+        start_date = today - timedelta(days=1)
+    elif range_str == "7D":
+        start_date = today - timedelta(days=7)
+    elif range_str == "14D":
+        start_date = today - timedelta(days=14)
+    elif range_str == "30D":
         start_date = today - timedelta(days=30)
     elif range_str == "90D":
         start_date = today - timedelta(days=90)
@@ -190,7 +196,7 @@ async def webhook(request: Request) -> Response:
 @app.get("/")
 async def financials_page(request: Request, _: None = Depends(_auth)):
     range_str = request.query_params.get("range", "ALL").upper()
-    if range_str not in ("30D", "90D", "YTD", "ALL"):
+    if range_str not in ("1D", "7D", "14D", "30D", "90D", "YTD", "ALL"):
         range_str = "ALL"
 
     with db.get_db() as session:
@@ -229,7 +235,7 @@ async def financials_page(request: Request, _: None = Depends(_auth)):
         "monthly": monthly,
         "chart_labels": chart_labels,
         "chart_values": chart_values,
-        "chart_ranges": ["30D", "90D", "YTD", "ALL"],
+        "chart_ranges": ["1D", "7D", "14D", "30D", "90D", "YTD", "ALL"],
         "selected_range": range_str,
         "activity_feed": activity_feed,
     })
