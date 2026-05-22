@@ -35,7 +35,7 @@
 
 </div>
 
-{% if portfolio and portfolio.items %}
+{% if portfolio and portfolio.holdings %}
 <div class="glass-card" style="margin-bottom: 20px;">
   <div class="section-header" style="display:flex;align-items:center;justify-content:space-between;">
     <span>Live Portfolio</span>
@@ -51,7 +51,7 @@
       </tr>
     </thead>
     <tbody>
-      {% for item in portfolio.items %}
+      {% for item in portfolio.holdings %}
       <tr>
         <td>
           <strong>{{ item.symbol }}</strong>

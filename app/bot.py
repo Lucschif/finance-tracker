@@ -261,7 +261,7 @@ async def cmd_holdings(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     portfolio = prices_module.get_portfolio_value(holdings)
     lines = ["*📈 Portfolio*\n"]
-    for item in portfolio["items"]:
+    for item in portfolio["holdings"]:
         price_str = f"€{item['price']:,.2f}" if item["price"] else "n/a"
         value_str = f"€{item['value']:,.2f}" if item["value"] else "n/a"
         lines.append(f"*{item['symbol']}* ({item['quantity']:g} units)")

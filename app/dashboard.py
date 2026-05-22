@@ -203,7 +203,7 @@ async def financials_page(request: Request, _: None = Depends(_auth)):
         activity_feed = _build_activity_feed(all_txns)
 
     # Live portfolio value (fetched outside the DB session — may call yfinance)
-    portfolio = prices_module.get_portfolio_value(holdings) if holdings else {"items": [], "total": 0.0}
+    portfolio = prices_module.get_portfolio_value(holdings) if holdings else {"holdings": [], "total": 0.0}
 
     # Net worth = cash baseline + transaction delta + live investments
     cash_baseline = sum(a.initial_balance or 0 for a in accounts if a.name.lower() == "cash")

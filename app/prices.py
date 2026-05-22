@@ -49,7 +49,7 @@ def get_portfolio_value(holdings) -> dict:
         })
         if value is not None:
             total += value
-    return {"items": items, "total": round(total, 2)}
+    return {"holdings": items, "total": round(total, 2)}
 
 
 # ── Fetching ──────────────────────────────────────────────────────────────────
