@@ -167,6 +167,26 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/debug/prices")
+async def debug_prices():
+    import yfinance as yf
+    results = {}
+    for ticker in ["QUBIC-USD", "SOL-USD", "VWCE.DE"]:
+        try:
+            t = yf.Ticker(ticker)
+            fast = t.fast_info.last_price
+            currency = getattr(t.fast_info, "currency", None)
+            try:
+                hist = t.history(period="1d")
+                hist_close = float(hist["Close"].iloc[-1]) if not hist.empty else None
+            except Exception as he:
+                hist_close = f"error: {he}"
+            results[ticker] = {"fast_price": fast, "currency": currency, "hist_close": hist_close}
+        except Exception as e:
+            results[ticker] = {"error": str(e)}
+    return results
+
+
 @app.get("/ping")
 async def ping():
     return {"pong": True}
