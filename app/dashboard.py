@@ -218,7 +218,8 @@ async def financials_page(request: Request, _: None = Depends(_auth)):
     cash_baseline = sum(a.initial_balance or 0 for a in accounts if a.name.lower() == "cash")
     inv_baseline  = sum(a.initial_balance or 0 for a in accounts if a.name.lower() != "cash")
     investments_value = portfolio["total"] if holdings else inv_baseline
-    live_nw = cash_baseline + total_income - total_expense + investments_value
+    live_cash = cash_baseline + total_income - total_expense  # cash moves with every income/expense
+    live_nw = live_cash + investments_value
     full_baseline = cash_baseline + investments_value
 
     # Rebuild chart with full baseline (cash + portfolio)
@@ -227,7 +228,7 @@ async def financials_page(request: Request, _: None = Depends(_auth)):
     return templates.TemplateResponse(request, "financials.html", {
         "active_page": "financials",
         "live_nw": live_nw,
-        "cash_baseline": cash_baseline,
+        "cash_baseline": live_cash,
         "investments_value": investments_value,
         "initial_balance": full_baseline,
         "accounts": [a for a in accounts if (a.initial_balance or 0) > 0],

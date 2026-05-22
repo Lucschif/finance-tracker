@@ -112,7 +112,7 @@ def _fetch_portfolio_history(holdings, range_str: str) -> tuple[list[str], list[
             return [], []
 
         combined = pd.concat(all_series, axis=1)
-        combined = combined.ffill()
+        combined = combined.ffill().bfill()  # bfill fills missing early data from first known price
         total = combined.sum(axis=1)
 
         labels = [d.strftime("%b %d") for d in total.index]
