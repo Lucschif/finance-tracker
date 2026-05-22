@@ -210,8 +210,9 @@ async def financials_page(request: Request, _: None = Depends(_auth)):
         chart_labels, chart_values = _build_chart_data(all_txns, initial_balance, range_str)
         activity_feed = _build_activity_feed(all_txns)
 
-    # Live portfolio value (fetched outside the DB session — may call yfinance)
+    # Live portfolio value + history (fetched outside the DB session — may call yfinance)
     portfolio = prices_module.get_portfolio_value(holdings) if holdings else {"holdings": [], "total": 0.0}
+    inv_chart_labels, inv_chart_values = prices_module.get_portfolio_history(holdings, range_str) if holdings else ([], [])
 
     # Net worth = cash baseline + transaction delta + live investments
     cash_baseline = sum(a.initial_balance or 0 for a in accounts if a.name.lower() == "cash")
@@ -237,6 +238,8 @@ async def financials_page(request: Request, _: None = Depends(_auth)):
         "chart_values": chart_values,
         "chart_ranges": ["1D", "7D", "14D", "30D", "90D", "YTD", "ALL"],
         "selected_range": range_str,
+        "inv_chart_labels": inv_chart_labels,
+        "inv_chart_values": inv_chart_values,
         "activity_feed": activity_feed,
     })
 
