@@ -51,6 +51,7 @@ def get_portfolio_value(holdings) -> dict:
         })
         if value is not None:
             total += value
+    items.sort(key=lambda x: x["value"] if x["value"] is not None else -1, reverse=True)
     return {"holdings": items, "total": round(total, 2)}
 
 
