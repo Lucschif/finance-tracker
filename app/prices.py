@@ -39,6 +39,8 @@ def get_portfolio_value(holdings) -> dict:
     for h in holdings:
         price = get_price_eur(h.symbol, h.asset_type)
         value = round(price * h.quantity, 2) if price is not None else None
+        if value == 0.0 and price is not None:
+            value = price * h.quantity  # keep precision for tiny-price assets
         items.append({
             "symbol": h.symbol,
             "name": h.name or h.symbol,
@@ -81,7 +83,7 @@ def _yfinance(ticker: str) -> float | None:
                 logger.warning("No FX rate for %s → EUR", currency)
                 return None
             price = price * rate
-        return round(float(price), 6)
+        return float(price)  # keep full precision for tiny prices
     except Exception as exc:
         logger.warning("yfinance failed for %s: %s", ticker, exc)
         return None

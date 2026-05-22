@@ -60,8 +60,8 @@
           {% endif %}
         </td>
         <td style="color:var(--text-secondary)">{{ item.quantity }}</td>
-        <td>{% if item.price %}{{ item.price | format_currency }}{% else %}<span style="color:var(--text-secondary)">n/a</span>{% endif %}</td>
-        <td style="text-align:right;font-weight:600;">{% if item.value %}{{ item.value | format_currency }}{% else %}—{% endif %}</td>
+        <td>{% if item.price is not none %}{{ item.price | format_currency }}{% else %}<span style="color:var(--text-secondary)">n/a</span>{% endif %}</td>
+        <td style="text-align:right;font-weight:600;">{% if item.value is not none %}{{ item.value | format_currency }}{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
