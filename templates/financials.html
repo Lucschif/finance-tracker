@@ -73,21 +73,6 @@
 </div>
 {% endif %}
 
-{% if accounts %}
-<div class="glass-card" style="margin-bottom: 20px;">
-  <div class="section-header">Account Balances (Baseline)</div>
-  {% for account in accounts %}
-  <div class="cat-row">
-    <div class="cat-name" style="text-transform: capitalize;">{{ account.name }}</div>
-    <div class="cat-track">
-      <div class="cat-fill {% if loop.first %}top{% endif %}"
-           style="width: {% if initial_balance > 0 %}{{ ((account.initial_balance / initial_balance) * 100) | round(1) }}{% else %}50{% endif %}%"></div>
-    </div>
-    <div class="cat-amount">{{ account.initial_balance | format_currency }}</div>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
 
 <div class="glass-card" style="margin-bottom: 20px;">
   <div class="section-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
