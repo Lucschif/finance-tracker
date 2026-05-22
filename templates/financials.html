@@ -230,21 +230,26 @@
     <span>Portfolio Breakdown</span>
     <span style="font-size:12px;color:var(--text-secondary);">{{ portfolio.total | format_currency }} total</span>
   </div>
-  <div style="display:flex;align-items:center;gap:32px;margin-top:16px;flex-wrap:wrap;">
-    <div style="position:relative;width:200px;height:200px;flex-shrink:0;">
-      <canvas id="portfolioChart"></canvas>
+  <div style="display:grid;grid-template-columns:160px 1fr;gap:28px;align-items:center;margin-top:16px;">
+    <div style="position:relative;width:160px;height:160px;">
+      <canvas id="portfolioChart" width="160" height="160"></canvas>
     </div>
-    <div style="flex:1;min-width:180px;">
+    <div>
+      {% set colors_list = ['#3F5AF5','#a78bfa','#34d399','#f59e0b','#f87171','#38bdf8','#fb923c','#e879f9'] %}
+      {% set ns = namespace(i=0) %}
       {% for item in portfolio.holdings %}
       {% if item.value is not none and item.value > 0 %}
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-        <div style="width:10px;height:10px;border-radius:50%;background:var(--portfolio-color-{{ loop.index0 % 8 }});flex-shrink:0;"></div>
-        <div style="flex:1;font-size:13px;font-weight:600;">{{ item.symbol }}</div>
-        <div style="font-size:13px;color:var(--text-secondary);">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">
+        <div style="width:9px;height:9px;border-radius:50%;background:{{ colors_list[ns.i % 8] }};flex-shrink:0;"></div>
+        <div style="flex:1;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          {{ item.symbol | replace("-EUR","") | replace("-USD","") | replace("-GBP","") }}
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);min-width:38px;text-align:right;">
           {{ ((item.value / portfolio.total) * 100) | round(1) }}%
         </div>
-        <div style="font-size:13px;font-weight:600;min-width:80px;text-align:right;">{{ item.value | format_currency }}</div>
+        <div style="font-size:13px;font-weight:600;min-width:82px;text-align:right;">{{ item.value | format_currency }}</div>
       </div>
+      {% set ns.i = ns.i + 1 %}
       {% endif %}
       {% endfor %}
     </div>
@@ -252,11 +257,8 @@
   <script>
     (function () {
       const ctx2 = document.getElementById('portfolioChart');
-      const colors = [
-        '#3F5AF5','#a78bfa','#34d399','#f59e0b',
-        '#f87171','#38bdf8','#fb923c','#e879f9'
-      ];
-      const labels = [{% for item in portfolio.holdings %}{% if item.value is not none and item.value > 0 %}'{{ item.symbol }}',{% endif %}{% endfor %}];
+      const colors = ['#3F5AF5','#a78bfa','#34d399','#f59e0b','#f87171','#38bdf8','#fb923c','#e879f9'];
+      const labels = [{% for item in portfolio.holdings %}{% if item.value is not none and item.value > 0 %}'{{ item.symbol | replace("-EUR","") | replace("-USD","") | replace("-GBP","") }}',{% endif %}{% endfor %}];
       const data   = [{% for item in portfolio.holdings %}{% if item.value is not none and item.value > 0 %}{{ item.value }},{% endif %}{% endfor %}];
       new Chart(ctx2, {
         type: 'doughnut',
@@ -283,9 +285,6 @@
           }
         }
       });
-      // inject CSS variables for legend dots
-      const root = document.documentElement;
-      colors.forEach((c,i) => root.style.setProperty('--portfolio-color-'+i, c));
     })();
   </script>
 </div>
