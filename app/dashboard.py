@@ -10,6 +10,9 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from telegram import Update
 
 from app import budget as budget_module
@@ -48,6 +51,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
+# ── Rate limiting ─────────────────────────────────────────────────────────────
+# 30 requests/minute per IP on dashboard pages — blocks brute-force on Basic Auth
+# Public endpoints (/health, /ping, /webhook) are not decorated so stay unlimited.
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 def _fmt_currency(value) -> str:
@@ -194,6 +204,7 @@ async def webhook(request: Request) -> Response:
 
 
 @app.get("/")
+@limiter.limit("30/minute")
 async def financials_page(request: Request, _: None = Depends(_auth)):
     range_str = request.query_params.get("range", "ALL").upper()
     if range_str not in ("1D", "7D", "14D", "30D", "90D", "YTD", "ALL"):
@@ -246,6 +257,7 @@ async def financials_page(request: Request, _: None = Depends(_auth)):
 
 
 @app.get("/expenses")
+@limiter.limit("30/minute")
 async def expenses_page(request: Request, _: None = Depends(_auth)):
     with db.get_db() as session:
         weekly = budget_module.weekly_stats(session, config.WEEKLY_BUDGET)
@@ -261,6 +273,7 @@ async def expenses_page(request: Request, _: None = Depends(_auth)):
 
 
 @app.get("/categories")
+@limiter.limit("30/minute")
 async def categories_page(request: Request, _: None = Depends(_auth)):
     with db.get_db() as session:
         monthly = budget_module.monthly_summary(session)
@@ -280,6 +293,7 @@ async def categories_page(request: Request, _: None = Depends(_auth)):
 
 
 @app.get("/transactions")
+@limiter.limit("30/minute")
 async def transactions_page(request: Request, _: None = Depends(_auth)):
     filter_type = request.query_params.get("type", "")
     filter_category = request.query_params.get("category", "")

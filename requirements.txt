@@ -8,3 +8,4 @@ python-telegram-bot>=21.3
 anthropic>=0.28.0
 python-dotenv>=1.0.1
 yfinance>=0.2.40
+slowapi>=0.1.9
