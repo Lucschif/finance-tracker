@@ -1,0 +1,15 @@
+# Local-only dependencies for compute_forecasts.py
+# Requires Python 3.11 or 3.12 (timesfm does not support 3.13+)
+# Do NOT add these to requirements.txt — too large for Render's free tier.
+#
+# One-time setup:
+#   py -3.11 -m venv .venv-forecast
+#   .venv-forecast\Scripts\pip install torch python-dotenv
+#   .venv-forecast\Scripts\pip install "git+https://github.com/google-research/timesfm.git#egg=timesfm[torch]"
+#
+# Run:
+#   .venv-forecast\Scripts\python compute_forecasts.py
+
+torch
+python-dotenv
+git+https://github.com/google-research/timesfm.git#egg=timesfm[torch]

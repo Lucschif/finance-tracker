@@ -71,6 +71,67 @@ def get_portfolio_history(holdings, range_str: str) -> tuple[list[str], list[flo
     return result
 
 
+def get_portfolio_projection(holdings, symbol: str, years: int) -> dict | None:
+    """CAGR + volatility-cone projection for total portfolio or a single holding.
+
+    Uses the full available price history to estimate annualised return and
+    volatility, then projects forward *years* years at monthly resolution using
+    a log-normal model.  Returns a dict with hist context + projection arrays,
+    or None if there is not enough data.
+    """
+    target = holdings if symbol.upper() == "TOTAL" else [h for h in holdings if h.symbol == symbol.upper()]
+    if not target:
+        return None
+
+    # Reuse the cached history fetch (ALL = max available range)
+    labels_all, values_all = get_portfolio_history(target, "ALL")
+    if len(values_all) < 60:
+        return None
+
+    try:
+        import numpy as np
+
+        v = np.array(values_all, dtype=np.float64)
+        v = v[v > 0]
+        if len(v) < 30:
+            return None
+
+        log_ret = np.diff(np.log(v))
+        mu_annual    = float(log_ret.mean() * 252)
+        sigma_annual = float(log_ret.std() * np.sqrt(252))
+        v0 = float(v[-1])
+
+        today = date.today()
+        proj_labels, proj_point, proj_upper, proj_lower = [], [], [], []
+        for m in range(1, years * 12 + 1):
+            future = today + timedelta(days=m * 30)
+            t = m / 12.0
+            pt = v0 * np.exp(mu_annual * t)
+            up = v0 * np.exp(mu_annual * t + sigma_annual * np.sqrt(t))
+            lo = max(0.0, v0 * np.exp(mu_annual * t - sigma_annual * np.sqrt(t)))
+            proj_labels.append(future.strftime("%b %Y"))
+            proj_point.append(round(float(pt), 2))
+            proj_upper.append(round(float(up), 2))
+            proj_lower.append(round(float(lo), 2))
+
+        # ~1 year of history for chart context
+        ctx = min(252, len(labels_all))
+        return {
+            "hist_labels": labels_all[-ctx:],
+            "hist_values": [round(float(x), 2) for x in values_all[-ctx:]],
+            "proj_labels": proj_labels,
+            "proj_point":  proj_point,
+            "proj_upper":  proj_upper,
+            "proj_lower":  proj_lower,
+            "cagr":  round((float(np.exp(mu_annual)) - 1) * 100, 1),
+            "vol":   round(sigma_annual * 100, 1),
+            "hist_years": round(len(values_all) / 252, 1),
+        }
+    except Exception as exc:
+        logger.warning("get_portfolio_projection failed for %s: %s", symbol, exc)
+        return None
+
+
 def _fetch_portfolio_history(holdings, range_str: str) -> tuple[list[str], list[float]]:
     try:
         import yfinance as yf

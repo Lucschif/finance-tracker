@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Column, Date, DateTime, Float, Integer, String, text
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, Integer, String, Text, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy import create_engine
 
@@ -19,6 +19,18 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expi
 
 class Base(DeclarativeBase):
     pass
+
+
+class Forecast(Base):
+    __tablename__ = "forecasts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String, nullable=False)          # ticker or 'TOTAL'
+    computed_at = Column(DateTime, default=datetime.utcnow)
+    forecast_dates = Column(Text, nullable=False)    # JSON ["2026-05-25", ...]
+    point_forecast = Column(Text, nullable=False)    # JSON [12345.0, ...]
+    q10_forecast = Column(Text, nullable=False)      # JSON [11000.0, ...]
+    q90_forecast = Column(Text, nullable=False)      # JSON [14000.0, ...]
 
 
 class Holding(Base):

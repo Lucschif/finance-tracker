@@ -20,6 +20,7 @@ from app import budget as budget_module
 from app import categories as categories_module
 from app import config
 from app import database as db
+from app import forecasts as forecasts_module
 from app import prices as prices_module
 
 _ptb_app = None
@@ -238,6 +239,10 @@ async def financials_page(request: Request, _: None = Depends(_auth)):
     # Rebuild chart with full baseline (cash + portfolio)
     chart_labels, chart_values = _build_chart_data(all_txns, full_baseline, range_str)
 
+    # Forecasts (pre-computed offline, read from DB — may be None if never computed)
+    total_forecast = forecasts_module.get_latest_forecast("TOTAL")
+    forecast_symbols = forecasts_module.get_forecast_symbols()
+
     return templates.TemplateResponse(request, "financials.html", {
         "active_page": "financials",
         "live_nw": live_nw,
@@ -254,7 +259,35 @@ async def financials_page(request: Request, _: None = Depends(_auth)):
         "selected_range": range_str,
         "inv_chart_labels": inv_chart_labels,
         "inv_chart_values": inv_chart_values,
+        "total_forecast": total_forecast,
+        "forecast_symbols": forecast_symbols,
         "activity_feed": activity_feed,
+    })
+
+
+@app.get("/investments")
+async def investments_page(request: Request, _: None = Depends(_auth)):
+    range_str = request.query_params.get("range", "ALL").upper()
+    if range_str not in ("1D", "7D", "14D", "30D", "90D", "YTD", "ALL"):
+        range_str = "ALL"
+
+    with db.get_db() as session:
+        holdings = db.get_holdings(session)
+
+    portfolio = prices_module.get_portfolio_value(holdings) if holdings else {"holdings": [], "total": 0.0}
+    inv_chart_labels, inv_chart_values = prices_module.get_portfolio_history(holdings, range_str) if holdings else ([], [])
+    total_forecast = forecasts_module.get_latest_forecast("TOTAL")
+    forecast_symbols = forecasts_module.get_forecast_symbols()
+
+    return templates.TemplateResponse(request, "investments.html", {
+        "active_page": "investments",
+        "portfolio": portfolio,
+        "inv_chart_labels": inv_chart_labels,
+        "inv_chart_values": inv_chart_values,
+        "total_forecast": total_forecast,
+        "forecast_symbols": forecast_symbols,
+        "chart_ranges": ["1D", "7D", "14D", "30D", "90D", "YTD", "ALL"],
+        "selected_range": range_str,
     })
 
 
@@ -290,6 +323,56 @@ async def categories_page(request: Request, _: None = Depends(_auth)):
         "top_category": top_category,
         "max_amount": max_amount,
     })
+
+
+@app.get("/api/forecast")
+async def forecast_api(request: Request, _: None = Depends(_auth)):
+    symbol = request.query_params.get("symbol", "TOTAL").upper()
+    range_str = request.query_params.get("range", "ALL").upper()
+    if range_str not in ("1D", "7D", "14D", "30D", "90D", "YTD", "ALL"):
+        range_str = "ALL"
+
+    with db.get_db() as session:
+        holdings = db.get_holdings(session)
+
+    if symbol == "TOTAL":
+        hist_labels, hist_values = prices_module.get_portfolio_history(holdings, range_str) if holdings else ([], [])
+    else:
+        holding = next((h for h in holdings if h.symbol == symbol), None)
+        if holding:
+            hist_labels, hist_values = prices_module.get_portfolio_history([holding], range_str)
+        else:
+            hist_labels, hist_values = [], []
+
+    forecast = forecasts_module.get_latest_forecast(symbol)
+    available = forecasts_module.get_forecast_symbols()
+
+    return {
+        "symbol": symbol,
+        "range": range_str,
+        "hist_labels": hist_labels,
+        "hist_values": hist_values,
+        "forecast": forecast,
+        "available_symbols": available,
+    }
+
+
+@app.get("/api/projection")
+async def projection_api(request: Request, _: None = Depends(_auth)):
+    symbol = request.query_params.get("symbol", "TOTAL").upper()
+    try:
+        years = int(request.query_params.get("years", "5"))
+    except ValueError:
+        years = 5
+    years = max(1, min(years, 10))
+
+    with db.get_db() as session:
+        holdings = db.get_holdings(session)
+
+    result = prices_module.get_portfolio_projection(holdings, symbol, years)
+    if result is None:
+        return {"error": "Not enough history to compute projection", "symbol": symbol, "years": years}
+    return {"symbol": symbol, "years": years, **result}
 
 
 @app.get("/transactions")

@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if portfolio and portfolio.holdings %}
+<div class="glass-card" style="margin-bottom: 20px;">
+  <div class="section-header" style="display:flex;align-items:center;justify-content:space-between;">
+    <span>Portfolio Breakdown</span>
+    <span style="font-size:12px;color:var(--text-secondary);">{{ portfolio.total | format_currency }} total</span>
+  </div>
+  <div class="portfolio-breakdown-grid" style="display:grid;grid-template-columns:160px 1fr;gap:28px;align-items:center;margin-top:16px;">
+    <div style="position:relative;width:160px;height:160px;">
+      <canvas id="portfolioChart" width="160" height="160"></canvas>
+    </div>
+    <div>
+      {% set colors_list = ['#3F5AF5','#a78bfa','#34d399','#f59e0b','#f87171','#38bdf8','#fb923c','#e879f9'] %}
+      {% set ns = namespace(i=0) %}
+      {% for item in portfolio.holdings %}
+      {% if item.value is not none and item.value > 0 %}
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">
+        <div style="width:9px;height:9px;border-radius:50%;background:{{ colors_list[ns.i % 8] }};flex-shrink:0;"></div>
+        <div style="flex:1;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          {{ item.symbol | replace("-EUR","") | replace("-USD","") | replace("-GBP","") }}
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);min-width:38px;text-align:right;">
+          {{ ((item.value / portfolio.total) * 100) | round(1) }}%
+        </div>
+        <div style="font-size:13px;font-weight:600;min-width:82px;text-align:right;">{{ item.value | format_currency }}</div>
+      </div>
+      {% set ns.i = ns.i + 1 %}
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+    (function () {
+      const ctx2 = document.getElementById('portfolioChart');
+      const colors = ['#3F5AF5','#a78bfa','#34d399','#f59e0b','#f87171','#38bdf8','#fb923c','#e879f9'];
+      const labels = [{% for item in portfolio.holdings %}{% if item.value is not none and item.value > 0 %}'{{ item.symbol | replace("-EUR","") | replace("-USD","") | replace("-GBP","") }}',{% endif %}{% endfor %}];
+      const data   = [{% for item in portfolio.holdings %}{% if item.value is not none and item.value > 0 %}{{ item.value }},{% endif %}{% endfor %}];
+      new Chart(ctx2, {
+        type: 'doughnut',
+        data: {
+          labels: labels,
+          datasets: [{ data: data, backgroundColor: colors.slice(0, labels.length), borderWidth: 0, hoverOffset: 6 }]
+        },
+        options: {
+          responsive: false,
+          cutout: '68%',
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: 'rgba(8,12,20,0.9)',
+              borderColor: 'rgba(255,255,255,0.1)',
+              borderWidth: 1,
+              callbacks: {
+                label: function(c) {
+                  const pct = (c.parsed / data.reduce((a,b)=>a+b,0)*100).toFixed(1);
+                  return ' €' + c.parsed.toLocaleString('en-IE',{minimumFractionDigits:2}) + '  (' + pct + '%)';
+                }
+              }
+            }
+          }
+        }
+      });
+    })();
+  </script>
+</div>
+{% endif %}
+
+<div class="glass-card">
+
+  <!-- ── Header row ─────────────────────────────────────────────────────── -->
+  <div class="section-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+
+    <!-- Left: title + holding selector -->
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span id="chartTitle">Short-term Forecast</span>
+      {% if portfolio and portfolio.holdings %}
+      <select id="holdingSelect"
+        style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;
+               color:var(--text-primary);font-size:12px;padding:4px 8px;cursor:pointer;outline:none;">
+        <option value="TOTAL">Total Portfolio</option>
+        {% for item in portfolio.holdings %}
+        <option value="{{ item.symbol }}">
+          {{ item.symbol | replace("-EUR","") | replace("-USD","") | replace("-GBP","") }}
+        </option>
+        {% endfor %}
+      </select>
+      {% endif %}
+    </div>
+
+    <!-- Right: mode toggle + range buttons -->
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+
+      <!-- Mode toggle -->
+      <div style="display:flex;gap:3px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.10);border-radius:8px;padding:3px;">
+        <button id="btnShort"
+          style="font-size:12px;padding:4px 10px;border-radius:5px;border:none;cursor:pointer;
+                 color:#fff;background:rgba(167,139,250,0.40);">
+          Short-term
+        </button>
+        <button id="btnLong"
+          style="font-size:12px;padding:4px 10px;border-radius:5px;border:none;cursor:pointer;
+                 color:rgba(255,255,255,0.45);background:transparent;">
+          Long-term
+        </button>
+      </div>
+
+      <span style="color:rgba(255,255,255,0.15);font-size:14px;">|</span>
+
+      <!-- Short-term range buttons -->
+      <span style="display:flex;gap:5px;" id="shortRangeBtns">
+        {% for r in chart_ranges %}
+        <button data-range="{{ r }}"
+          style="font-size:12px;padding:5px 9px;border-radius:6px;cursor:pointer;
+                 border:1px solid rgba(255,255,255,0.12);
+                 color:{% if selected_range == r %}#fff{% else %}rgba(255,255,255,0.45){% endif %};
+                 background:{% if selected_range == r %}rgba(167,139,250,0.35){% else %}rgba(255,255,255,0.04){% endif %};">
+          {{ r }}
+        </button>
+        {% endfor %}
+      </span>
+
+      <!-- Long-term year buttons (hidden initially) -->
+      <span style="display:none;gap:5px;" id="longRangeBtns">
+        {% for y in [1, 3, 5, 10] %}
+        <button data-years="{{ y }}"
+          style="font-size:12px;padding:5px 9px;border-radius:6px;cursor:pointer;
+                 border:1px solid rgba(255,255,255,0.12);
+                 color:{% if y == 5 %}#fff{% else %}rgba(255,255,255,0.45){% endif %};
+                 background:{% if y == 5 %}rgba(245,158,11,0.35){% else %}rgba(255,255,255,0.04){% endif %};">
+          {{ y }}Y
+        </button>
+        {% endfor %}
+      </span>
+
+    </div>
+  </div>
+
+  <!-- ── Chart ──────────────────────────────────────────────────────────── -->
+  <div style="position:relative;height:300px;margin-top:16px;">
+    <canvas id="invForecastChart"></canvas>
+  </div>
+
+  <!-- ── Meta line ──────────────────────────────────────────────────────── -->
+  <div id="chartMeta" style="font-size:11px;color:var(--text-secondary);margin-top:8px;text-align:right;min-height:16px;">
+    {% if total_forecast %}
+    Forecast computed {{ total_forecast.computed_at[:10] }} &middot; dashed = TimesFM &middot; shaded = 10th&ndash;90th percentile
+    {% else %}
+    No forecast yet &mdash; run <code style="background:rgba(255,255,255,0.08);padding:1px 6px;border-radius:4px;">python compute_forecasts.py</code> locally.
+    {% endif %}
+  </div>
+
+  <script>
+  (function () {
+    // ── Colour palette ────────────────────────────────────────────────────
+    const C = {
+      hist:     '#a78bfa',
+      histFill: 'rgba(167,139,250,0.08)',
+      // short-term (TimesFM) — green
+      fc:       '#34d399',
+      fcBand:   'rgba(52,211,153,0.10)',
+      fcEdge:   'rgba(52,211,153,0)',
+      // long-term (CAGR) — amber
+      cagr:     '#f59e0b',
+      cagrBand: 'rgba(245,158,11,0.10)',
+      cagrEdge: 'rgba(245,158,11,0)',
+    };
+
+    function fmtDateISO(iso) {
+      const d = new Date(iso + 'T00:00:00');
+      return d.toLocaleDateString('en-IE', { month: 'short', day: 'numeric' });
+    }
+
+    // ── Dataset builders ─────────────────────────────────────────────────
+
+    function histOnly(hLabels, hVals) {
+      return {
+        labels: hLabels,
+        datasets: [{ label: 'Portfolio', data: hVals,
+          borderColor: C.hist, backgroundColor: C.histFill,
+          fill: true, tension: 0.3, pointRadius: 2, pointHoverRadius: 5 }]
+      };
+    }
+
+    function withProjection(hLabels, hVals, projLabels, projPoint, projUpper, projLower, edgeColor, bandColor, lineColor, lineLabel) {
+      if (!projPoint || !projPoint.length || !hVals.length) return histOnly(hLabels, hVals);
+      const junction = hVals[hVals.length - 1];
+      const pad = Array(hVals.length - 1).fill(null);
+      return {
+        labels: [...hLabels, ...projLabels],
+        datasets: [
+          { label: 'Portfolio',
+            data: [...hVals, ...Array(projLabels.length).fill(null)],
+            borderColor: C.hist, backgroundColor: C.histFill,
+            fill: true, tension: 0.3, pointRadius: 2, pointHoverRadius: 5, spanGaps: false },
+          { label: 'lower',
+            data: [...pad, junction, ...projLower],
+            borderColor: edgeColor, backgroundColor: 'transparent',
+            fill: false, pointRadius: 0, tension: 0.3, spanGaps: false },
+          { label: 'upper',
+            data: [...pad, junction, ...projUpper],
+            borderColor: edgeColor, backgroundColor: bandColor,
+            fill: '-1', pointRadius: 0, tension: 0.3, spanGaps: false },
+          { label: lineLabel,
+            data: [...pad, junction, ...projPoint],
+            borderColor: lineColor, backgroundColor: 'transparent',
+            borderDash: [6, 4], fill: false,
+            tension: 0.3, pointRadius: 0, pointHoverRadius: 5, spanGaps: false },
+        ]
+      };
+    }
+
+    function buildShort(hLabels, hVals, fc) {
+      if (!fc || !fc.point) return histOnly(hLabels, hVals);
+      const fcLabels = (fc.dates || []).map(fmtDateISO);
+      return withProjection(hLabels, hVals, fcLabels, fc.point, fc.q90, fc.q10,
+        C.fcEdge, C.fcBand, C.fc, 'Forecast');
+    }
+
+    function buildLong(d) {
+      return withProjection(d.hist_labels, d.hist_values,
+        d.proj_labels, d.proj_point, d.proj_upper, d.proj_lower,
+        C.cagrEdge, C.cagrBand, C.cagr, 'Projection');
+    }
+
+    // ── Chart init ────────────────────────────────────────────────────────
+    const initHLabels = {{ inv_chart_labels | tojson }};
+    const initHVals   = {{ inv_chart_values | tojson }};
+    const initFc      = {{ (total_forecast | tojson) if total_forecast else 'null' }};
+
+    const chartOpts = {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(8,12,20,0.9)',
+          borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+          filter: i => i.dataset.label !== 'lower' && i.dataset.label !== 'upper',
+          callbacks: {
+            label(c) {
+              if (c.parsed.y === null) return null;
+              const pfx = (c.dataset.label === 'Forecast' || c.dataset.label === 'Projection')
+                ? c.dataset.label + ': ' : '';
+              return pfx + '€' + c.parsed.y.toLocaleString('en-IE', { minimumFractionDigits: 2 });
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: 'rgba(255,255,255,0.45)', font: { size: 11 }, maxTicksLimit: 12 },
+             grid: { color: 'rgba(255,255,255,0.05)' } },
+        y: { ticks: { color: 'rgba(255,255,255,0.45)', font: { size: 11 },
+                      callback: v => '€' + v.toLocaleString() },
+             grid: { color: 'rgba(255,255,255,0.05)' } }
+      }
+    };
+
+    const ctx = document.getElementById('invForecastChart');
+    let chart = new Chart(ctx, {
+      type: 'line',
+      data: buildShort(initHLabels, initHVals, initFc),
+      options: chartOpts,
+    });
+
+    // ── State ─────────────────────────────────────────────────────────────
+    let mode          = 'short';   // 'short' | 'long'
+    let currentRange  = '{{ selected_range }}';
+    let currentYears  = 5;
+    let currentSymbol = 'TOTAL';
+    let loading       = false;
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+    function setActive(containerSelector, activeBtn, accentColor) {
+      document.querySelectorAll(containerSelector + ' button').forEach(b => {
+        const on = b === activeBtn;
+        b.style.color      = on ? '#fff' : 'rgba(255,255,255,0.45)';
+        b.style.background = on ? accentColor : 'rgba(255,255,255,0.04)';
+      });
+    }
+
+    function setMeta(html) {
+      document.getElementById('chartMeta').innerHTML = html;
+    }
+
+    // ── Mode switch ───────────────────────────────────────────────────────
+    function switchMode(m) {
+      mode = m;
+      const shortBtns = document.getElementById('shortRangeBtns');
+      const longBtns  = document.getElementById('longRangeBtns');
+      const title     = document.getElementById('chartTitle');
+      const btnShort  = document.getElementById('btnShort');
+      const btnLong   = document.getElementById('btnLong');
+
+      if (m === 'short') {
+        shortBtns.style.display = 'flex';
+        longBtns.style.display  = 'none';
+        title.textContent = 'Short-term Forecast';
+        btnShort.style.color = '#fff';
+        btnShort.style.background = 'rgba(167,139,250,0.40)';
+        btnLong.style.color = 'rgba(255,255,255,0.45)';
+        btnLong.style.background = 'transparent';
+        loadShort(currentSymbol, currentRange);
+      } else {
+        shortBtns.style.display = 'none';
+        longBtns.style.display  = 'flex';
+        title.textContent = 'Long-term Projection';
+        btnLong.style.color = '#fff';
+        btnLong.style.background = 'rgba(245,158,11,0.40)';
+        btnShort.style.color = 'rgba(255,255,255,0.45)';
+        btnShort.style.background = 'transparent';
+        loadLong(currentSymbol, currentYears);
+      }
+    }
+
+    // ── Data loaders ──────────────────────────────────────────────────────
+    async function loadShort(symbol, range) {
+      if (loading) return;
+      loading = true; currentRange = range; currentSymbol = symbol;
+      setActive('#shortRangeBtns', [...document.querySelectorAll('#shortRangeBtns button')]
+        .find(b => b.dataset.range === range), 'rgba(167,139,250,0.35)');
+      try {
+        const res = await fetch(`/api/forecast?symbol=${encodeURIComponent(symbol)}&range=${range}`, { credentials: 'include' });
+        const d = await res.json();
+        const fc = d.forecast;
+        chart.data = buildShort(d.hist_labels, d.hist_values, fc);
+        chart.update();
+        setMeta(fc && fc.computed_at
+          ? `Forecast computed ${fc.computed_at.slice(0,10)} &middot; dashed = TimesFM &middot; shaded = 10th&ndash;90th percentile`
+          : 'No forecast for this asset &mdash; run <code style="background:rgba(255,255,255,0.08);padding:1px 6px;border-radius:4px;">python compute_forecasts.py</code> locally.'
+        );
+      } catch(e) { console.error(e); }
+      finally { loading = false; }
+    }
+
+    async function loadLong(symbol, years) {
+      if (loading) return;
+      loading = true; currentYears = years; currentSymbol = symbol;
+      setActive('#longRangeBtns', [...document.querySelectorAll('#longRangeBtns button')]
+        .find(b => +b.dataset.years === years), 'rgba(245,158,11,0.35)');
+      setMeta('Loading projection…');
+      try {
+        const res = await fetch(`/api/projection?symbol=${encodeURIComponent(symbol)}&years=${years}`, { credentials: 'include' });
+        const d = await res.json();
+        if (d.error) {
+          setMeta(d.error); loading = false; return;
+        }
+        chart.data = buildLong(d);
+        chart.update();
+        setMeta(`Based on ${d.hist_years}y of history &middot; CAGR <strong style="color:#f59e0b">${d.cagr > 0 ? '+' : ''}${d.cagr}%</strong> &middot; annual vol <strong style="color:rgba(255,255,255,0.7)">${d.vol}%</strong> &middot; shaded = ±1 std dev`);
+      } catch(e) { console.error(e); setMeta('Failed to load projection.'); }
+      finally { loading = false; }
+    }
+
+    // ── Event listeners ───────────────────────────────────────────────────
+    document.getElementById('btnShort').addEventListener('click', () => switchMode('short'));
+    document.getElementById('btnLong').addEventListener('click',  () => switchMode('long'));
+
+    document.querySelectorAll('#shortRangeBtns button').forEach(btn =>
+      btn.addEventListener('click', () => loadShort(currentSymbol, btn.dataset.range))
+    );
+    document.querySelectorAll('#longRangeBtns button').forEach(btn =>
+      btn.addEventListener('click', () => loadLong(currentSymbol, +btn.dataset.years))
+    );
+
+    const sel = document.getElementById('holdingSelect');
+    if (sel) sel.addEventListener('change', () => {
+      currentSymbol = sel.value;
+      mode === 'short' ? loadShort(currentSymbol, currentRange) : loadLong(currentSymbol, currentYears);
+    });
+  })();
+  </script>
+</div>
+
+{% if not portfolio or not portfolio.holdings %}
+<div class="glass-card">
+  <p style="color:var(--text-secondary);font-size:14px;">
+    No holdings yet. Add them via the Telegram bot:<br>
+    <code style="background:rgba(255,255,255,0.08);padding:2px 8px;border-radius:4px;">/holding VWCE.DE 25.02</code>
+  </p>
+</div>
+{% endif %}
+
+{% endblock %}
