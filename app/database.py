@@ -68,6 +68,17 @@ class Transaction(Base):
     is_impulse = Column(Boolean, default=False)
 
 
+class ProductivitySession(Base):
+    __tablename__ = "productivity_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    duration_hours = Column(Float, nullable=False)
+    category = Column(String, nullable=False)   # Work | Study | Personal Project
+    note = Column(String, nullable=True)
+    date = Column(Date, default=date.today)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _as_date(val) -> date:
@@ -233,3 +244,38 @@ def set_account_balance(db: Session, name: str, balance: float) -> Account:
         db.add(account)
     db.flush()
     return account
+
+
+def add_productivity_session(
+    db: Session,
+    *,
+    duration_hours: float,
+    category: str,
+    note: str = "",
+    session_date: date | None = None,
+) -> ProductivitySession:
+    s = ProductivitySession(
+        duration_hours=duration_hours,
+        category=category,
+        note=note or None,
+        date=session_date or date.today(),
+    )
+    db.add(s)
+    db.flush()
+    return s
+
+
+def get_productivity_sessions(db: Session, since: date | None = None) -> list[ProductivitySession]:
+    q = db.query(ProductivitySession)
+    if since:
+        q = q.filter(ProductivitySession.date >= since)
+    return q.order_by(ProductivitySession.date.asc(), ProductivitySession.created_at.asc()).all()
+
+
+def get_recent_productivity_sessions(db: Session, limit: int = 20) -> list[ProductivitySession]:
+    return (
+        db.query(ProductivitySession)
+        .order_by(ProductivitySession.created_at.desc())
+        .limit(limit)
+        .all()
+    )

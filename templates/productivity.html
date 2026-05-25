@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="kpi-grid">
+
+  <div class="glass-card">
+    <div class="kpi-label">Today</div>
+    <div class="kpi-value accent">{{ today_hours | fmt_hours }}</div>
+    <div class="kpi-sub">logged today</div>
+  </div>
+
+  <div class="glass-card">
+    <div class="kpi-label">This Week</div>
+    <div class="kpi-value accent">{{ week_hours | fmt_hours }}</div>
+    <div class="kpi-sub">Mon – today</div>
+  </div>
+
+  <div class="glass-card">
+    <div class="kpi-label">This Month</div>
+    <div class="kpi-value accent">{{ month_hours | fmt_hours }}</div>
+    <div class="kpi-sub">{{ month_label }}</div>
+  </div>
+
+  <div class="glass-card">
+    <div class="kpi-label">Streak</div>
+    <div class="kpi-value {% if streak >= 7 %}positive{% elif streak >= 3 %}accent{% else %}{% endif %}">
+      {{ streak }} day{% if streak != 1 %}s{% endif %}
+    </div>
+    <div class="kpi-sub">consecutive days logged</div>
+  </div>
+
+</div>
+
+<div class="glass-card" style="margin-bottom: 20px;">
+  <div class="section-header">This Week by Category</div>
+  {% set week_has_data = (week_work | sum + week_study | sum + week_personal | sum) > 0 %}
+  {% if week_has_data %}
+  <div style="position: relative; height: 220px; margin-top: 16px;">
+    <canvas id="weekBarChart"></canvas>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+    (function () {
+      function fmtH(h) {
+        const totalMin = Math.round(h * 60);
+        const hrs = Math.floor(totalMin / 60);
+        const mins = totalMin % 60;
+        if (hrs && mins) return hrs + 'h ' + mins + 'min';
+        if (hrs) return hrs + 'h';
+        return mins + 'min';
+      }
+      const ctx = document.getElementById('weekBarChart');
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: {{ week_labels | tojson }},
+          datasets: [
+            {
+              label: 'Work',
+              data: {{ week_work | tojson }},
+              backgroundColor: 'rgba(63, 90, 245, 0.85)',
+              borderRadius: 4,
+            },
+            {
+              label: 'Study',
+              data: {{ week_study | tojson }},
+              backgroundColor: 'rgba(16, 185, 129, 0.85)',
+              borderRadius: 4,
+            },
+            {
+              label: 'Personal Project',
+              data: {{ week_personal | tojson }},
+              backgroundColor: 'rgba(245, 158, 11, 0.85)',
+              borderRadius: 4,
+            },
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: true,
+              labels: { color: 'rgba(255,255,255,0.65)', font: { size: 12 }, boxWidth: 12, padding: 16 }
+            },
+            tooltip: {
+              backgroundColor: 'rgba(8,12,20,0.9)',
+              borderColor: 'rgba(255,255,255,0.1)',
+              borderWidth: 1,
+              callbacks: {
+                label: function (c) {
+                  return c.parsed.y > 0 ? ' ' + c.dataset.label + ': ' + fmtH(c.parsed.y) : null;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              stacked: true,
+              ticks: { color: 'rgba(255,255,255,0.45)', font: { size: 11 } },
+              grid: { color: 'rgba(255,255,255,0.05)' }
+            },
+            y: {
+              stacked: true,
+              ticks: {
+                color: 'rgba(255,255,255,0.45)',
+                font: { size: 11 },
+                callback: function (v) { return v > 0 ? fmtH(v) : '0'; }
+              },
+              grid: { color: 'rgba(255,255,255,0.05)' }
+            }
+          }
+        }
+      });
+    })();
+  </script>
+  {% else %}
+  <p style="color: var(--text-secondary); font-size: 14px; margin-top: 12px;">No sessions logged this week yet.</p>
+  {% endif %}
+</div>
+
+<div class="glass-card" style="margin-bottom: 20px;">
+  <div class="section-header">Daily Hours — Last 30 Days</div>
+  {% set line_has_data = line_values | sum > 0 %}
+  {% if line_has_data %}
+  <div style="position: relative; height: 200px; margin-top: 16px;">
+    <canvas id="lineChart"></canvas>
+  </div>
+  <script>
+    (function () {
+      function fmtH(h) {
+        const totalMin = Math.round(h * 60);
+        const hrs = Math.floor(totalMin / 60);
+        const mins = totalMin % 60;
+        if (hrs && mins) return hrs + 'h ' + mins + 'min';
+        if (hrs) return hrs + 'h';
+        return mins + 'min';
+      }
+      const ctx2 = document.getElementById('lineChart');
+      new Chart(ctx2, {
+        type: 'line',
+        data: {
+          labels: {{ line_labels | tojson }},
+          datasets: [{
+            label: 'Hours',
+            data: {{ line_values | tojson }},
+            borderColor: '#10B981',
+            backgroundColor: 'rgba(16,185,129,0.08)',
+            fill: true,
+            tension: 0.3,
+            pointBackgroundColor: '#10B981',
+            pointBorderColor: '#10B981',
+            pointRadius: 3,
+            pointHoverRadius: 6,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: 'rgba(8,12,20,0.9)',
+              borderColor: 'rgba(255,255,255,0.1)',
+              borderWidth: 1,
+              callbacks: {
+                label: function (c) { return ' ' + fmtH(c.parsed.y); }
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: 'rgba(255,255,255,0.45)', font: { size: 11 }, maxTicksLimit: 10 },
+              grid: { color: 'rgba(255,255,255,0.05)' }
+            },
+            y: {
+              ticks: {
+                color: 'rgba(255,255,255,0.45)',
+                font: { size: 11 },
+                callback: function (v) { return v > 0 ? fmtH(v) : '0'; }
+              },
+              grid: { color: 'rgba(255,255,255,0.05)' },
+              min: 0,
+            }
+          }
+        }
+      });
+    })();
+  </script>
+  {% else %}
+  <p style="color: var(--text-secondary); font-size: 14px; margin-top: 12px;">No sessions in the last 30 days yet.</p>
+  {% endif %}
+</div>
+
+<div class="glass-card">
+  <div class="section-header">Recent Sessions</div>
+  {% if recent_sessions %}
+  <table class="glass-table">
+    <thead>
+      <tr>
+        <th class="hide-mobile">Date</th>
+        <th>Category</th>
+        <th>Duration</th>
+        <th>Note</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in recent_sessions %}
+      <tr>
+        <td class="hide-mobile">{{ s.date }}</td>
+        <td><span class="pill">{{ s.category }}</span></td>
+        <td style="font-weight: 600;">{{ s.duration_hours | fmt_hours }}</td>
+        <td style="color: var(--text-secondary);">{{ s.note or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color: var(--text-secondary); font-size: 14px;">No sessions yet. Log one via Telegram: <code>2h work</code></p>
+  {% endif %}
+</div>
+
+{% endblock %}

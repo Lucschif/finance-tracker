@@ -17,18 +17,21 @@ from app import budget as budget_module
 from app import config
 from app.database import (
     _as_date,
+    add_productivity_session,
     add_transaction,
     delete_holding,
     get_accounts,
     get_active_transactions,
     get_db,
     get_holdings,
+    get_productivity_sessions,
     set_account_balance,
     undo_last_transaction,
     upsert_holding,
 )
 from app import prices as prices_module
 from app.parser import parse_transaction
+from app.productivity_parser import parse_productivity
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,16 @@ def _owner_only(func):
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _fmt_hours(h: float) -> str:
+    total_min = round(h * 60)
+    hrs, mins = divmod(total_min, 60)
+    if hrs and mins:
+        return f"{hrs}h {mins}min"
+    if hrs:
+        return f"{hrs}h"
+    return f"{mins}min"
+
 
 def _bar(pct: float, width: int = 10) -> str:
     filled = int(min(pct / 100, 1.0) * width)
@@ -91,11 +104,18 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/budget — weekly budget status\n"
         "/undo — undo last transaction\n"
         "/summary — net worth snapshot\n\n"
+        "*Productivity*\n"
+        "/ptoday — today's focus hours\n"
+        "/pweek — this week's focus hours\n"
+        "/pmonth — this month's focus hours\n\n"
         "*Logging*\n"
         "`14 kebab` → expense, Food\n"
         "`+2400 salary` → income\n"
         "`100 to investments` → transfer\n"
-        "`40 shoes impulse` → impulse purchase",
+        "`40 shoes impulse` → impulse purchase\n"
+        "`2h work` → 2h Work session\n"
+        "`45min study math` → 45min Study\n"
+        "`1.5h personal project` → 1h 30min Personal Project",
         parse_mode="Markdown",
     )
 
@@ -322,15 +342,87 @@ async def cmd_summary(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+# ── Productivity commands ─────────────────────────────────────────────────────
+
+def _productivity_summary(sessions) -> str:
+    total = sum(s.duration_hours for s in sessions)
+    by_cat: dict[str, float] = {}
+    for s in sessions:
+        by_cat[s.category] = by_cat.get(s.category, 0.0) + s.duration_hours
+    lines = [f"⏱ *{_fmt_hours(total)}* total"]
+    if by_cat:
+        lines.append("\n*By Category*")
+        for cat, h in sorted(by_cat.items(), key=lambda x: x[1], reverse=True):
+            lines.append(f"  {cat}: {_fmt_hours(h)}")
+    return "\n".join(lines)
+
+
+@_owner_only
+async def cmd_ptoday(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    today = date.today()
+    with get_db() as session:
+        sessions = [s for s in get_productivity_sessions(session) if _as_date(s.date) == today]
+    if not sessions:
+        await update.message.reply_text("No productivity sessions today yet.\n\nTry: `2h work`  `45min study`", parse_mode="Markdown")
+        return
+    lines = [f"*Today — {today}*\n", _productivity_summary(sessions)]
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+@_owner_only
+async def cmd_pweek(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())
+    with get_db() as session:
+        sessions = [s for s in get_productivity_sessions(session) if _as_date(s.date) >= week_start]
+    if not sessions:
+        await update.message.reply_text("No productivity sessions this week yet.")
+        return
+    lines = [f"*This Week ({week_start} – {today})*\n", _productivity_summary(sessions)]
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+@_owner_only
+async def cmd_pmonth(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    today = date.today()
+    month_start = date(today.year, today.month, 1)
+    with get_db() as session:
+        sessions = [s for s in get_productivity_sessions(session) if _as_date(s.date) >= month_start]
+    if not sessions:
+        await update.message.reply_text("No productivity sessions this month yet.")
+        return
+    month_label = today.strftime("%B %Y")
+    lines = [f"*{month_label}*\n", _productivity_summary(sessions)]
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
 # ── Message handler ───────────────────────────────────────────────────────────
 
 @_owner_only
 async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
+
+    # Productivity entries short-circuit before the finance parser
+    productivity = parse_productivity(text)
+    if productivity:
+        with get_db() as session:
+            add_productivity_session(
+                session,
+                duration_hours=productivity["duration_hours"],
+                category=productivity["category"],
+                note=productivity.get("note", ""),
+            )
+        note_line = f"\n📝 _{productivity['note']}_" if productivity.get("note") else ""
+        await update.message.reply_text(
+            f"⏱ *+{_fmt_hours(productivity['duration_hours'])}* — {productivity['category']}{note_line}",
+            parse_mode="Markdown",
+        )
+        return
+
     parsed = await parse_transaction(text)
     if not parsed:
         await update.message.reply_text(
-            "❓ Couldn't parse that. Try:\n`14 kebab`  `+2400 salary`  `100 to investments`",
+            "❓ Couldn't parse that. Try:\n`14 kebab`  `+2400 salary`  `100 to investments`\n`2h work`  `45min study`  `1.5h personal project`",
             parse_mode="Markdown",
         )
         return
@@ -375,5 +467,8 @@ def create_ptb_app() -> Application:
     app.add_handler(CommandHandler("budget", cmd_budget))
     app.add_handler(CommandHandler("undo", cmd_undo))
     app.add_handler(CommandHandler("summary", cmd_summary))
+    app.add_handler(CommandHandler("ptoday", cmd_ptoday))
+    app.add_handler(CommandHandler("pweek", cmd_pweek))
+    app.add_handler(CommandHandler("pmonth", cmd_pmonth))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     return app

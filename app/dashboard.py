@@ -63,6 +63,20 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
 
+def _fmt_hours(h) -> str:
+    try:
+        h = float(h or 0)
+    except (TypeError, ValueError):
+        h = 0.0
+    total_min = round(h * 60)
+    hrs, mins = divmod(total_min, 60)
+    if hrs and mins:
+        return f"{hrs}h {mins}min"
+    if hrs:
+        return f"{hrs}h"
+    return f"{mins}min"
+
+
 def _fmt_currency(value) -> str:
     try:
         v = float(value or 0)
@@ -81,6 +95,7 @@ def _budget_color(pct: float) -> str:
 
 templates.env.filters["format_currency"] = _fmt_currency
 templates.env.filters["budget_color"] = _budget_color
+templates.env.filters["fmt_hours"] = _fmt_hours
 
 _security = HTTPBasic()
 
@@ -373,6 +388,67 @@ async def projection_api(request: Request, _: None = Depends(_auth)):
     if result is None:
         return {"error": "Not enough history to compute projection", "symbol": symbol, "years": years}
     return {"symbol": symbol, "years": years, **result}
+
+
+@app.get("/productivity")
+async def productivity_page(request: Request, _: None = Depends(_auth)):
+    today = date.today()
+    week_start = today - timedelta(days=today.weekday())
+    month_start = date(today.year, today.month, 1)
+    thirty_days_ago = today - timedelta(days=29)
+
+    with db.get_db() as session:
+        all_sessions = db.get_productivity_sessions(session)
+        recent = db.get_recent_productivity_sessions(session, limit=20)
+
+    today_hours = round(sum(s.duration_hours for s in all_sessions if db._as_date(s.date) == today), 2)
+    week_hours = round(sum(s.duration_hours for s in all_sessions if db._as_date(s.date) >= week_start), 2)
+    month_hours = round(sum(s.duration_hours for s in all_sessions if db._as_date(s.date) >= month_start), 2)
+
+    # Streak: consecutive days ending today (or yesterday as grace) with ≥1 session
+    session_dates = {db._as_date(s.date) for s in all_sessions}
+    streak_start = today if today in session_dates else today - timedelta(days=1)
+    streak = 0
+    if streak_start in session_dates:
+        cur = streak_start
+        while cur in session_dates:
+            streak += 1
+            cur -= timedelta(days=1)
+
+    # Stacked bar: hours by category for each day of this week
+    week_labels, week_work, week_study, week_personal = [], [], [], []
+    for i in range(7):
+        d = week_start + timedelta(days=i)
+        day = [s for s in all_sessions if db._as_date(s.date) == d]
+        week_labels.append(d.strftime("%a"))
+        week_work.append(round(sum(s.duration_hours for s in day if s.category == "Work"), 2))
+        week_study.append(round(sum(s.duration_hours for s in day if s.category == "Study"), 2))
+        week_personal.append(round(sum(s.duration_hours for s in day if s.category == "Personal Project"), 2))
+
+    # 30-day line: total hours per day
+    daily: dict[date, float] = defaultdict(float)
+    for s in all_sessions:
+        d = db._as_date(s.date)
+        if d >= thirty_days_ago:
+            daily[d] += s.duration_hours
+    line_labels = [(thirty_days_ago + timedelta(days=i)).strftime("%b %d") for i in range(30)]
+    line_values = [round(daily.get(thirty_days_ago + timedelta(days=i), 0.0), 2) for i in range(30)]
+
+    return templates.TemplateResponse(request, "productivity.html", {
+        "active_page": "productivity",
+        "month_label": today.strftime("%B %Y"),
+        "today_hours": today_hours,
+        "week_hours": week_hours,
+        "month_hours": month_hours,
+        "streak": streak,
+        "week_labels": week_labels,
+        "week_work": week_work,
+        "week_study": week_study,
+        "week_personal": week_personal,
+        "line_labels": line_labels,
+        "line_values": line_values,
+        "recent_sessions": recent,
+    })
 
 
 @app.get("/transactions")
