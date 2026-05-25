@@ -292,3 +292,14 @@ def get_recent_productivity_sessions(db: Session, limit: int = 20) -> list[Produ
         .limit(limit)
         .all()
     )
+
+
+def undo_last_productivity_session(db: Session) -> ProductivitySession | None:
+    s = (
+        db.query(ProductivitySession)
+        .order_by(ProductivitySession.created_at.desc())
+        .first()
+    )
+    if s:
+        db.delete(s)
+    return s

@@ -11,6 +11,8 @@ _DURATION_RE = re.compile(
 # Category keywords — ordered most-specific first. Covers common verb forms.
 _CATEGORY_PATTERNS = [
     (re.compile(r"\bpersonal\s+project\b|\bside\s+project\b", re.IGNORECASE), "Personal Project"),
+    (re.compile(r"\bra\s+work\b", re.IGNORECASE), "RA Work"),
+    (re.compile(r"\bgre(?:\s+prep)?\b", re.IGNORECASE), "GRE Prep"),
     (re.compile(r"\bwork(?:ed|ing)?\b", re.IGNORECASE), "Work"),
     (re.compile(r"\bstud(?:y|ied|ying)\b|\blearn(?:ed|ing)?\b", re.IGNORECASE), "Study"),
 ]
@@ -21,7 +23,7 @@ _FILLER_RE = re.compile(
     re.IGNORECASE,
 )
 
-PRODUCTIVITY_CATEGORIES = ["Work", "Study", "Personal Project"]
+PRODUCTIVITY_CATEGORIES = ["Work", "Study", "Personal Project", "RA Work", "GRE Prep"]
 
 
 def parse_productivity(text: str) -> dict | None:

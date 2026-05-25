@@ -28,6 +28,7 @@ from app.database import (
     set_account_balance,
     undo_last_transaction,
     redo_last_transaction,
+    undo_last_productivity_session,
     upsert_holding,
 )
 from app import prices as prices_module
@@ -109,7 +110,8 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "*Productivity*\n"
         "/ptoday — today's focus hours\n"
         "/pweek — this week's focus hours\n"
-        "/pmonth — this month's focus hours\n\n"
+        "/pmonth — this month's focus hours\n"
+        "/pundo — remove last productivity session\n\n"
         "*Logging*\n"
         "`14 kebab` → expense, Food\n"
         "`+2400 salary` → income\n"
@@ -411,6 +413,19 @@ async def cmd_pmonth(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+@_owner_only
+async def cmd_pundo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    with get_db() as session:
+        s = undo_last_productivity_session(session)
+    if s:
+        await update.message.reply_text(
+            f"↩️ Removed: {_fmt_hours(s.duration_hours)} — {s.category}"
+            + (f"\nNote: {s.note}" if s.note else "")
+        )
+    else:
+        await update.message.reply_text("No productivity session to undo.")
+
+
 # ── Message handler ───────────────────────────────────────────────────────────
 
 @_owner_only
@@ -486,5 +501,6 @@ def create_ptb_app() -> Application:
     app.add_handler(CommandHandler("ptoday", cmd_ptoday))
     app.add_handler(CommandHandler("pweek", cmd_pweek))
     app.add_handler(CommandHandler("pmonth", cmd_pmonth))
+    app.add_handler(CommandHandler("pundo", cmd_pundo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     return app
