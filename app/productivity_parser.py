@@ -2,52 +2,67 @@ from __future__ import annotations
 
 import re
 
-# Matches a leading duration: "2h", "45min", "1.5h", "30m", "2hrs", "2 hours"
+# Duration anywhere in the text: "90 minutes", "2h", "1.5 hours", "30m", "2hrs"
 _DURATION_RE = re.compile(
-    r"^(\d+(?:[.,]\d+)?)\s*(h(?:rs?|ours?)?|min(?:utes?)?|m(?![a-z]))\b",
+    r"(\d+(?:[.,]\d+)?)\s*(h(?:rs?|ours?)?|min(?:utes?)?|m(?![a-z]))\b",
     re.IGNORECASE,
 )
 
-# Ordered most-specific first so "personal project" wins over "personal"
+# Category keywords — ordered most-specific first. Covers common verb forms.
 _CATEGORY_PATTERNS = [
     (re.compile(r"\bpersonal\s+project\b|\bside\s+project\b", re.IGNORECASE), "Personal Project"),
-    (re.compile(r"\bwork(?:ing)?\b", re.IGNORECASE), "Work"),
-    (re.compile(r"\bstudy(?:ing)?\b|\blearn(?:ing)?\b", re.IGNORECASE), "Study"),
+    (re.compile(r"\bwork(?:ed|ing)?\b", re.IGNORECASE), "Work"),
+    (re.compile(r"\bstud(?:y|ied|ying)\b|\blearn(?:ed|ing)?\b", re.IGNORECASE), "Study"),
 ]
+
+# Filler words to strip from the note after removing duration + category
+_FILLER_RE = re.compile(
+    r"\b(for|on|of|the|a|an|in|at|doing|spent|i|today|yesterday)\b",
+    re.IGNORECASE,
+)
 
 PRODUCTIVITY_CATEGORIES = ["Work", "Study", "Personal Project"]
 
 
 def parse_productivity(text: str) -> dict | None:
-    """Return {duration_hours, category, note} or None if not a productivity entry."""
+    """Return {duration_hours, category, note} or None if not a productivity entry.
+
+    Handles both 'duration-first' ("2h work") and 'verb-first' ("Studied 90 minutes").
+    Requires both a duration unit AND a category keyword to avoid false positives.
+    """
     text = text.strip()
-    m = _DURATION_RE.match(text)
-    if not m:
-        return None
 
-    quantity = float(m.group(1).replace(",", "."))
-    unit = m.group(2).lower()
-    duration_hours = quantity if unit.startswith("h") else quantity / 60
-
-    remainder = text[m.end():].strip()
-    if not remainder:
+    # Both must be present — this is the guard against false positives
+    dm = _DURATION_RE.search(text)
+    if not dm:
         return None
 
     category = None
-    note_text = remainder
+    cat_match = None
     for pattern, cat in _CATEGORY_PATTERNS:
-        cm = pattern.search(remainder)
+        cm = pattern.search(text)
         if cm:
             category = cat
-            note_text = (remainder[:cm.start()] + remainder[cm.end():]).strip()
-            note_text = re.sub(r"\s+", " ", note_text).strip()
+            cat_match = cm
             break
 
     if category is None:
         return None
 
+    quantity = float(dm.group(1).replace(",", "."))
+    unit = dm.group(2).lower()
+    duration_hours = quantity if unit.startswith("h") else quantity / 60
+
+    # Build note from what remains after removing duration span and category span
+    spans = sorted([dm.span(), cat_match.span()])
+    remaining = text
+    for start, end in reversed(spans):
+        remaining = remaining[:start] + " " + remaining[end:]
+    remaining = _FILLER_RE.sub(" ", remaining)
+    remaining = re.sub(r"\s+", " ", remaining).strip()
+
     return {
         "duration_hours": round(duration_hours, 2),
         "category": category,
-        "note": note_text[:200],
+        "note": remaining[:200],
     }
