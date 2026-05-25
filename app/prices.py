@@ -18,6 +18,14 @@ _cache: dict[str, tuple[float, float]] = {}       # symbol -> (price, timestamp)
 _hist_cache: dict[str, tuple[list, list, float]] = {}  # key -> (labels, values, timestamp)
 _TTL = 300  # seconds
 
+# Proxy map for extending history of newer share classes via an older equivalent.
+# Used only for the MAX range (projection stats) — not regular chart fetches.
+# VWRL.L is the distributing share class of the same Vanguard FTSE All-World fund,
+# listed on LSE since 2012 vs VWCE.DE's 2019. Total returns are virtually identical.
+_PROXY_MAP: dict[str, str] = {
+    "VWCE.DE": "VWRL.L",
+}
+
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
@@ -90,7 +98,7 @@ def get_portfolio_projection(holdings, symbol: str, years: int,
         return None
 
     # Full history for the selected holdings
-    labels_all, values_all = get_portfolio_history(target, "ALL")
+    labels_all, values_all = get_portfolio_history(target, "MAX")
     if len(values_all) < 60:
         return None
 
@@ -157,11 +165,12 @@ def _fetch_portfolio_history(holdings, range_str: str) -> tuple[list[str], list[
         range_days = {
             "1D": 2, "7D": 7, "14D": 14, "30D": 30,
             "90D": 90, "YTD": (today - date(today.year, 1, 1)).days + 1,
+            "ALL": 365,
         }
         if range_str in range_days:
             start = today - timedelta(days=range_days[range_str])
-        else:  # ALL
-            start = today - timedelta(days=365)
+        else:  # MAX — used internally by projection to get full history
+            start = today - timedelta(days=365 * 35)
 
         end = today + timedelta(days=1)  # yfinance end is exclusive
 
@@ -181,6 +190,28 @@ def _fetch_portfolio_history(holdings, range_str: str) -> tuple[list[str], list[
                 if currency.upper() != "EUR":
                     fx = _fx_to_eur(currency.upper()) or 1.0
                 series = (hist["Close"] * h.quantity * fx).rename(h.symbol)
+
+                # For MAX range, prepend proxy history where available
+                if range_str == "MAX" and h.symbol in _PROXY_MAP:
+                    proxy_sym = _PROXY_MAP[h.symbol]
+                    try:
+                        p_ticker = yf.Ticker(proxy_sym)
+                        p_hist = p_ticker.history(start=start.isoformat(), end=end.isoformat())
+                        if not p_hist.empty:
+                            p_currency = getattr(p_ticker.fast_info, "currency", None) or "USD"
+                            p_fx = 1.0
+                            if p_currency.upper() != "EUR":
+                                p_fx = _fx_to_eur(p_currency.upper()) or 1.0
+                            p_eur = p_hist["Close"] * p_fx  # proxy price in EUR per share
+                            actual_start = series.index[0]
+                            p_before = p_eur[p_eur.index < actual_start]
+                            if len(p_before) >= 20:
+                                # Scale proxy so its last value matches the actual's first value
+                                scale = series.iloc[0] / p_before.iloc[-1]
+                                series = pd.concat([(p_before * scale).rename(h.symbol), series])
+                    except Exception as exc:
+                        logger.warning("proxy fetch failed for %s via %s: %s", h.symbol, proxy_sym, exc)
+
                 all_series.append(series)
             except Exception as exc:
                 logger.warning("history fetch failed for %s: %s", h.symbol, exc)

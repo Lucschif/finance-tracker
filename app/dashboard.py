@@ -383,12 +383,12 @@ async def projection_api(request: Request, _: None = Depends(_auth)):
         years = int(request.query_params.get("years", "5"))
     except ValueError:
         years = 5
-    years = max(1, min(years, 10))
+    years = max(1, min(years, 60))
 
     raw_hy = request.query_params.get("history_years", "")
     history_years: int | None = None
     if raw_hy.isdigit():
-        history_years = max(1, min(int(raw_hy), 20))
+        history_years = max(1, min(int(raw_hy), 10))
 
     with db.get_db() as session:
         holdings = db.get_holdings(session)
