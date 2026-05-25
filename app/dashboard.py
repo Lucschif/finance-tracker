@@ -425,7 +425,7 @@ async def productivity_page(request: Request, _: None = Depends(_auth)):
             cur -= timedelta(days=1)
 
     # Stacked bar: hours by category for each day of this week
-    week_labels, week_work, week_study, week_personal = [], [], [], []
+    week_labels, week_work, week_study, week_personal, week_ra, week_gre = [], [], [], [], [], []
     for i in range(7):
         d = week_start + timedelta(days=i)
         day = [s for s in all_sessions if db._as_date(s.date) == d]
@@ -433,6 +433,8 @@ async def productivity_page(request: Request, _: None = Depends(_auth)):
         week_work.append(round(sum(s.duration_hours for s in day if s.category == "Work"), 2))
         week_study.append(round(sum(s.duration_hours for s in day if s.category == "Study"), 2))
         week_personal.append(round(sum(s.duration_hours for s in day if s.category == "Personal Project"), 2))
+        week_ra.append(round(sum(s.duration_hours for s in day if s.category == "RA Work"), 2))
+        week_gre.append(round(sum(s.duration_hours for s in day if s.category == "GRE Prep"), 2))
 
     # 30-day line: total hours per day
     daily: dict[date, float] = defaultdict(float)
@@ -454,6 +456,8 @@ async def productivity_page(request: Request, _: None = Depends(_auth)):
         "week_work": week_work,
         "week_study": week_study,
         "week_personal": week_personal,
+        "week_ra": week_ra,
+        "week_gre": week_gre,
         "line_labels": line_labels,
         "line_values": line_values,
         "recent_sessions": recent,
