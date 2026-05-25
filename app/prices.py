@@ -71,19 +71,25 @@ def get_portfolio_history(holdings, range_str: str) -> tuple[list[str], list[flo
     return result
 
 
-def get_portfolio_projection(holdings, symbol: str, years: int) -> dict | None:
-    """CAGR + volatility-cone projection for total portfolio or a single holding.
+def get_portfolio_projection(holdings, symbol: str, years: int,
+                              history_years: int | None = None) -> dict | None:
+    """CAGR + volatility-cone projection for total portfolio or a single non-crypto holding.
 
-    Uses the full available price history to estimate annualised return and
-    volatility, then projects forward *years* years at monthly resolution using
-    a log-normal model.  Returns a dict with hist context + projection arrays,
-    or None if there is not enough data.
+    Crypto is always excluded — too volatile for CAGR to be meaningful.
+    *history_years* controls how many years of past data are used to estimate
+    the annualised return and volatility (None = use all available data).
+    The chart context on the left also reflects this window.
     """
-    target = holdings if symbol.upper() == "TOTAL" else [h for h in holdings if h.symbol == symbol.upper()]
+    # Crypto is excluded from all projections
+    non_crypto = [h for h in holdings if h.asset_type != "crypto"]
+    if symbol.upper() == "TOTAL":
+        target = non_crypto
+    else:
+        target = [h for h in non_crypto if h.symbol == symbol.upper()]
     if not target:
         return None
 
-    # Reuse the cached history fetch (ALL = max available range)
+    # Full history for the selected holdings
     labels_all, values_all = get_portfolio_history(target, "ALL")
     if len(values_all) < 60:
         return None
@@ -91,15 +97,25 @@ def get_portfolio_projection(holdings, symbol: str, years: int) -> dict | None:
     try:
         import numpy as np
 
-        v = np.array(values_all, dtype=np.float64)
+        # Slice to the requested history window for stat computation
+        if history_years is not None:
+            n = min(history_years * 252, len(values_all))
+        else:
+            n = len(values_all)
+        n = max(n, 30)  # need at least 30 points
+
+        values_window = values_all[-n:]
+        labels_window = labels_all[-n:]
+
+        v = np.array(values_window, dtype=np.float64)
         v = v[v > 0]
         if len(v) < 30:
             return None
 
-        log_ret = np.diff(np.log(v))
+        log_ret      = np.diff(np.log(v))
         mu_annual    = float(log_ret.mean() * 252)
         sigma_annual = float(log_ret.std() * np.sqrt(252))
-        v0 = float(v[-1])
+        v0           = float(v[-1])
 
         today = date.today()
         proj_labels, proj_point, proj_upper, proj_lower = [], [], [], []
@@ -114,18 +130,18 @@ def get_portfolio_projection(holdings, symbol: str, years: int) -> dict | None:
             proj_upper.append(round(float(up), 2))
             proj_lower.append(round(float(lo), 2))
 
-        # ~1 year of history for chart context
-        ctx = min(252, len(labels_all))
+        # Chart context = the history window used for stats
+        ctx = min(252, len(labels_window))  # cap at 1 year for readability
         return {
-            "hist_labels": labels_all[-ctx:],
-            "hist_values": [round(float(x), 2) for x in values_all[-ctx:]],
+            "hist_labels": labels_window[-ctx:],
+            "hist_values": [round(float(x), 2) for x in values_window[-ctx:]],
             "proj_labels": proj_labels,
             "proj_point":  proj_point,
             "proj_upper":  proj_upper,
             "proj_lower":  proj_lower,
-            "cagr":  round((float(np.exp(mu_annual)) - 1) * 100, 1),
-            "vol":   round(sigma_annual * 100, 1),
-            "hist_years": round(len(values_all) / 252, 1),
+            "cagr":       round((float(np.exp(mu_annual)) - 1) * 100, 1),
+            "vol":        round(sigma_annual * 100, 1),
+            "hist_years": round(len(values_window) / 252, 1),
         }
     except Exception as exc:
         logger.warning("get_portfolio_projection failed for %s: %s", symbol, exc)

@@ -82,9 +82,11 @@
                color:var(--text-primary);font-size:12px;padding:4px 8px;cursor:pointer;outline:none;">
         <option value="TOTAL">Total Portfolio</option>
         {% for item in portfolio.holdings %}
+        {% if item.asset_type != 'crypto' %}
         <option value="{{ item.symbol }}">
           {{ item.symbol | replace("-EUR","") | replace("-USD","") | replace("-GBP","") }}
         </option>
+        {% endif %}
         {% endfor %}
       </select>
       {% endif %}
@@ -122,8 +124,10 @@
         {% endfor %}
       </span>
 
-      <!-- Long-term year buttons (hidden initially) -->
-      <span style="display:none;gap:5px;" id="longRangeBtns">
+      <!-- Long-term controls (hidden initially) -->
+      <span style="display:none;gap:5px;align-items:center;" id="longRangeBtns">
+        <!-- Projection horizon -->
+        <span style="font-size:11px;color:rgba(255,255,255,0.35);margin-right:2px;">Horizon</span>
         {% for y in [1, 3, 5, 10] %}
         <button data-years="{{ y }}"
           style="font-size:12px;padding:5px 9px;border-radius:6px;cursor:pointer;
@@ -133,6 +137,25 @@
           {{ y }}Y
         </button>
         {% endfor %}
+
+        <span style="color:rgba(255,255,255,0.15);margin:0 2px;">|</span>
+
+        <!-- History window -->
+        <span style="font-size:11px;color:rgba(255,255,255,0.35);margin-right:2px;">Based on</span>
+        {% for hy in [1, 3, 5] %}
+        <button data-history="{{ hy }}"
+          style="font-size:12px;padding:5px 9px;border-radius:6px;cursor:pointer;
+                 border:1px solid rgba(255,255,255,0.12);
+                 color:rgba(255,255,255,0.45);background:rgba(255,255,255,0.04);">
+          {{ hy }}Y
+        </button>
+        {% endfor %}
+        <button data-history="all"
+          style="font-size:12px;padding:5px 9px;border-radius:6px;cursor:pointer;
+                 border:1px solid rgba(255,255,255,0.12);
+                 color:#fff;background:rgba(245,158,11,0.20);">
+          All
+        </button>
       </span>
 
     </div>
@@ -266,11 +289,12 @@
     });
 
     // ── State ─────────────────────────────────────────────────────────────
-    let mode          = 'short';   // 'short' | 'long'
-    let currentRange  = '{{ selected_range }}';
-    let currentYears  = 5;
-    let currentSymbol = 'TOTAL';
-    let loading       = false;
+    let mode               = 'short';   // 'short' | 'long'
+    let currentRange       = '{{ selected_range }}';
+    let currentYears       = 5;
+    let currentHistoryYears = null;    // null = All
+    let currentSymbol      = 'TOTAL';
+    let loading            = false;
 
     // ── Helpers ───────────────────────────────────────────────────────────
     function setActive(containerSelector, activeBtn, accentColor) {
@@ -311,7 +335,7 @@
         btnLong.style.background = 'rgba(245,158,11,0.40)';
         btnShort.style.color = 'rgba(255,255,255,0.45)';
         btnShort.style.background = 'transparent';
-        loadLong(currentSymbol, currentYears);
+        loadLong(currentSymbol, currentYears, currentHistoryYears);
       }
     }
 
@@ -335,21 +359,33 @@
       finally { loading = false; }
     }
 
-    async function loadLong(symbol, years) {
+    function setHistoryActive(hy) {
+      document.querySelectorAll('#longRangeBtns [data-history]').forEach(b => {
+        const match = hy === null ? b.dataset.history === 'all' : +b.dataset.history === hy;
+        b.style.color      = match ? '#fff' : 'rgba(255,255,255,0.45)';
+        b.style.background = match ? 'rgba(245,158,11,0.20)' : 'rgba(255,255,255,0.04)';
+      });
+    }
+
+    async function loadLong(symbol, years, historyYears) {
       if (loading) return;
-      loading = true; currentYears = years; currentSymbol = symbol;
-      setActive('#longRangeBtns', [...document.querySelectorAll('#longRangeBtns button')]
+      loading = true;
+      currentYears = years; currentSymbol = symbol; currentHistoryYears = historyYears;
+      setActive('#longRangeBtns', [...document.querySelectorAll('#longRangeBtns [data-years]')]
         .find(b => +b.dataset.years === years), 'rgba(245,158,11,0.35)');
+      setHistoryActive(historyYears);
       setMeta('Loading projection…');
       try {
-        const res = await fetch(`/api/projection?symbol=${encodeURIComponent(symbol)}&years=${years}`, { credentials: 'include' });
+        const hyParam = historyYears != null ? `&history_years=${historyYears}` : '';
+        const res = await fetch(`/api/projection?symbol=${encodeURIComponent(symbol)}&years=${years}${hyParam}`, { credentials: 'include' });
         const d = await res.json();
         if (d.error) {
           setMeta(d.error); loading = false; return;
         }
         chart.data = buildLong(d);
         chart.update();
-        setMeta(`Based on ${d.hist_years}y of history &middot; CAGR <strong style="color:#f59e0b">${d.cagr > 0 ? '+' : ''}${d.cagr}%</strong> &middot; annual vol <strong style="color:rgba(255,255,255,0.7)">${d.vol}%</strong> &middot; shaded = ±1 std dev`);
+        const histLabel = historyYears != null ? `last ${historyYears}Y` : `all available (${d.hist_years}y)`;
+        setMeta(`Based on ${histLabel} of history &middot; CAGR <strong style="color:#f59e0b">${d.cagr > 0 ? '+' : ''}${d.cagr}%</strong> &middot; annual vol <strong style="color:rgba(255,255,255,0.7)">${d.vol}%</strong> &middot; shaded = ±1 std dev &middot; crypto excluded`);
       } catch(e) { console.error(e); setMeta('Failed to load projection.'); }
       finally { loading = false; }
     }
@@ -361,14 +397,20 @@
     document.querySelectorAll('#shortRangeBtns button').forEach(btn =>
       btn.addEventListener('click', () => loadShort(currentSymbol, btn.dataset.range))
     );
-    document.querySelectorAll('#longRangeBtns button').forEach(btn =>
-      btn.addEventListener('click', () => loadLong(currentSymbol, +btn.dataset.years))
+    document.querySelectorAll('#longRangeBtns [data-years]').forEach(btn =>
+      btn.addEventListener('click', () => loadLong(currentSymbol, +btn.dataset.years, currentHistoryYears))
+    );
+    document.querySelectorAll('#longRangeBtns [data-history]').forEach(btn =>
+      btn.addEventListener('click', () => {
+        const hy = btn.dataset.history === 'all' ? null : +btn.dataset.history;
+        loadLong(currentSymbol, currentYears, hy);
+      })
     );
 
     const sel = document.getElementById('holdingSelect');
     if (sel) sel.addEventListener('change', () => {
       currentSymbol = sel.value;
-      mode === 'short' ? loadShort(currentSymbol, currentRange) : loadLong(currentSymbol, currentYears);
+      mode === 'short' ? loadShort(currentSymbol, currentRange) : loadLong(currentSymbol, currentYears, currentHistoryYears);
     });
   })();
   </script>

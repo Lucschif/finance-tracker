@@ -350,16 +350,20 @@ async def forecast_api(request: Request, _: None = Depends(_auth)):
     with db.get_db() as session:
         holdings = db.get_holdings(session)
 
+    non_crypto = [h for h in holdings if h.asset_type != "crypto"]
+
     if symbol == "TOTAL":
-        hist_labels, hist_values = prices_module.get_portfolio_history(holdings, range_str) if holdings else ([], [])
+        hist_labels, hist_values = prices_module.get_portfolio_history(non_crypto, range_str) if non_crypto else ([], [])
+        forecast = forecasts_module.get_total_forecast_noncrypto(holdings)
     else:
-        holding = next((h for h in holdings if h.symbol == symbol), None)
+        holding = next((h for h in non_crypto if h.symbol == symbol), None)
         if holding:
             hist_labels, hist_values = prices_module.get_portfolio_history([holding], range_str)
+            forecast = forecasts_module.get_latest_forecast(symbol)
         else:
             hist_labels, hist_values = [], []
+            forecast = None
 
-    forecast = forecasts_module.get_latest_forecast(symbol)
     available = forecasts_module.get_forecast_symbols()
 
     return {
@@ -381,13 +385,18 @@ async def projection_api(request: Request, _: None = Depends(_auth)):
         years = 5
     years = max(1, min(years, 10))
 
+    raw_hy = request.query_params.get("history_years", "")
+    history_years: int | None = None
+    if raw_hy.isdigit():
+        history_years = max(1, min(int(raw_hy), 20))
+
     with db.get_db() as session:
         holdings = db.get_holdings(session)
 
-    result = prices_module.get_portfolio_projection(holdings, symbol, years)
+    result = prices_module.get_portfolio_projection(holdings, symbol, years, history_years)
     if result is None:
-        return {"error": "Not enough history to compute projection", "symbol": symbol, "years": years}
-    return {"symbol": symbol, "years": years, **result}
+        return {"error": "Not enough history to compute projection (crypto is excluded)", "symbol": symbol, "years": years}
+    return {"symbol": symbol, "years": years, "history_years": history_years, **result}
 
 
 @app.get("/productivity")
