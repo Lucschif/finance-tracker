@@ -58,19 +58,19 @@
             {
               label: 'Work',
               data: {{ week_work | tojson }},
-              backgroundColor: 'rgba(63, 90, 245, 0.85)',
+              backgroundColor: 'rgba(63,90,245,0.85)',   // brand-blue #3F5AF5
               borderRadius: 4,
             },
             {
               label: 'Study',
               data: {{ week_study | tojson }},
-              backgroundColor: 'rgba(16, 185, 129, 0.85)',
+              backgroundColor: 'rgba(139,92,246,0.85)',  // violet #8b5cf6
               borderRadius: 4,
             },
             {
               label: 'Personal Project',
               data: {{ week_personal | tojson }},
-              backgroundColor: 'rgba(245, 158, 11, 0.85)',
+              backgroundColor: 'rgba(6,182,212,0.85)',   // cyan #06b6d4
               borderRadius: 4,
             },
           ]
@@ -144,12 +144,12 @@
           datasets: [{
             label: 'Hours',
             data: {{ line_values | tojson }},
-            borderColor: '#10B981',
-            backgroundColor: 'rgba(16,185,129,0.08)',
+            borderColor: '#3F5AF5',
+            backgroundColor: 'rgba(63,90,245,0.08)',
             fill: true,
             tension: 0.3,
-            pointBackgroundColor: '#10B981',
-            pointBorderColor: '#10B981',
+            pointBackgroundColor: '#3F5AF5',
+            pointBorderColor: '#3F5AF5',
             pointRadius: 3,
             pointHoverRadius: 6,
           }]
