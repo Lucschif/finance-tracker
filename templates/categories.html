@@ -9,15 +9,7 @@
     <div class="kpi-sub">{{ monthly.month }}</div>
   </div>
 
-  <div class="glass-card">
-    <div class="kpi-label">Impulse Spending</div>
-    <div class="kpi-value {% if monthly.impulse_total > 0 %}danger{% else %}positive{% endif %}">
-      {{ monthly.impulse_total | format_currency }}
-    </div>
-    <div class="kpi-sub">marked as impulse</div>
-  </div>
-
-  {% if top_category %}
+{% if top_category %}
   <div class="glass-card">
     <div class="kpi-label">Biggest Category</div>
     <div class="kpi-value" style="font-size: 20px;">{{ top_category }}</div>
