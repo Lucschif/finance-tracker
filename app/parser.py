@@ -33,6 +33,8 @@ Rules:
 - Default to expense if unclear
 - Website Business: anything related to websites, domains, hosting, SaaS tools, business insurance, software, servers
 - Housing: rent, utilities, electricity, water, phone bills, home insurance, repairs
+- RA Work: anything related to research assistant work, lab supplies, academic research, experiments — category must be exactly "RA Work"
+- GRE Prep: anything related to GRE test prep, GRE books, GRE courses, test registration fees — category must be exactly "GRE Prep"
 - note must be SHORT and clean — strip any leading filler words like "spent on", "paid for", "bought", "got"
 
 Examples:
@@ -44,6 +46,9 @@ Examples:
   "34.60 spent on website business insurance"  → {"amount":34.60,"type":"expense","category":"Website Business","note":"website business insurance","is_impulse":false}
   "20 domain renewal"                          → {"amount":20,"type":"expense","category":"Website Business","note":"domain renewal","is_impulse":false}
   "120 home insurance"                         → {"amount":120,"type":"expense","category":"Housing","note":"home insurance","is_impulse":false}
+  "15 RA work"                                 → {"amount":15,"type":"expense","category":"RA Work","note":"RA work","is_impulse":false}
+  "30 GRE prep book"                           → {"amount":30,"type":"expense","category":"GRE Prep","note":"GRE prep book","is_impulse":false}
+  "50 magoosh subscription"                    → {"amount":50,"type":"expense","category":"GRE Prep","note":"magoosh subscription","is_impulse":false}
 
 Return only valid JSON, no other text."""
 
