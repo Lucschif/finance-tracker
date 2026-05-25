@@ -198,11 +198,19 @@ def _fetch_portfolio_history(holdings, range_str: str) -> tuple[list[str], list[
                         p_ticker = yf.Ticker(proxy_sym)
                         p_hist = p_ticker.history(start=start.isoformat(), end=end.isoformat())
                         if not p_hist.empty:
-                            p_currency = getattr(p_ticker.fast_info, "currency", None) or "USD"
-                            p_fx = 1.0
-                            if p_currency.upper() != "EUR":
-                                p_fx = _fx_to_eur(p_currency.upper()) or 1.0
-                            p_eur = p_hist["Close"] * p_fx  # proxy price in EUR per share
+                            p_currency = (getattr(p_ticker.fast_info, "currency", None) or "USD").upper()
+                            if p_currency == "EUR":
+                                p_eur = p_hist["Close"]
+                            else:
+                                # Fetch historical FX rates so each day uses the correct rate,
+                                # not today's spot (avoids baking GBP/EUR moves into equity returns)
+                                fx_hist = yf.Ticker(f"{p_currency}EUR=X").history(
+                                    start=start.isoformat(), end=end.isoformat()
+                                )
+                                if fx_hist.empty:
+                                    raise ValueError(f"no FX history for {p_currency}EUR=X")
+                                fx_series = fx_hist["Close"].reindex(p_hist.index).ffill().bfill()
+                                p_eur = p_hist["Close"] * fx_series
                             actual_start = series.index[0]
                             p_before = p_eur[p_eur.index < actual_start]
                             if len(p_before) >= 20:
