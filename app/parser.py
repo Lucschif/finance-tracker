@@ -21,7 +21,7 @@ Return ONLY a JSON object with these exact fields:
 
 Valid categories:
   Expense: Food, Transport, Entertainment, Clothing, Education, Health, \
-Personal Care, Subscriptions, Housing, Travel, Website Business
+Personal Care, Subscriptions, Housing, Travel, Website Business, RA Work, GRE Prep
   Income: Income
   Transfer: To Investments, From Investments
 

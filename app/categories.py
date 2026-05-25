@@ -1,7 +1,7 @@
 EXPENSE_CATEGORIES = [
     "Food", "Transport", "Entertainment", "Clothing", "Education",
     "Health", "Personal Care", "Subscriptions", "Housing", "Travel",
-    "Website Business",
+    "Website Business", "RA Work", "GRE Prep",
 ]
 INCOME_CATEGORIES = ["Income"]
 TRANSFER_CATEGORIES = ["To Investments", "From Investments"]
@@ -54,6 +54,14 @@ _KEYWORDS: dict[str, list[str]] = {
     "Travel": [
         "travel", "flight", "hotel", "airbnb", "vacation", "holiday",
         "trip", "booking", "hostel", "airport",
+    ],
+    "RA Work": [
+        "ra work", "research assistant", "research", "lab supplies", "lab",
+        "academic work", "research materials", "experiment", "reagent",
+    ],
+    "GRE Prep": [
+        "gre", "gre prep", "magoosh", "manhattan prep", "ets", "gre book",
+        "gre course", "gre test", "gre fee", "gre registration", "practice test",
     ],
     "Income": [
         "salary", "wage", "income", "paycheck", "payment", "freelance",

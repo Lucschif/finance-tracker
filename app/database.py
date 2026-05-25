@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from contextlib import contextmanager
 from datetime import date, datetime
 
@@ -200,6 +201,18 @@ def undo_last_transaction(db: Session) -> Transaction | None:
     t = get_last_transaction(db)
     if t:
         t.note = f"[UNDONE] {t.note or ''}".strip()
+    return t
+
+
+def redo_last_transaction(db: Session) -> Transaction | None:
+    t = (
+        db.query(Transaction)
+        .filter(Transaction.note.contains("[UNDONE]"))
+        .order_by(Transaction.created_at.desc())
+        .first()
+    )
+    if t:
+        t.note = re.sub(r"^\[UNDONE\]\s*", "", t.note or "").strip() or None
     return t
 
 

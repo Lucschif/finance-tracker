@@ -27,6 +27,7 @@ from app.database import (
     get_productivity_sessions,
     set_account_balance,
     undo_last_transaction,
+    redo_last_transaction,
     upsert_holding,
 )
 from app import prices as prices_module
@@ -88,7 +89,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "• `+2400 salary`\n"
         "• `100 to investments`\n"
         "• `40 shoes impulse`\n\n"
-        "Commands: /help /today /week /month /income /budget /undo /summary",
+        "Commands: /help /today /week /month /income /budget /undo /redo /summary",
         parse_mode="Markdown",
     )
 
@@ -103,6 +104,7 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/income — this month's income\n"
         "/budget — weekly budget status\n"
         "/undo — undo last transaction\n"
+        "/redo — restore last undone transaction\n"
         "/summary — net worth snapshot\n\n"
         "*Productivity*\n"
         "/ptoday — today's focus hours\n"
@@ -208,6 +210,19 @@ async def cmd_undo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
     else:
         await update.message.reply_text("No recent transaction to undo.")
+
+
+@_owner_only
+async def cmd_redo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    with get_db() as session:
+        t = redo_last_transaction(session)
+    if t:
+        await update.message.reply_text(
+            f"↪️ Restored: {t.type} €{t.amount:.2f} — {t.category}\n"
+            f"Note: {t.note or '—'}"
+        )
+    else:
+        await update.message.reply_text("No undone transaction to restore.")
 
 
 @_owner_only
@@ -466,6 +481,7 @@ def create_ptb_app() -> Application:
     app.add_handler(CommandHandler("income", cmd_income))
     app.add_handler(CommandHandler("budget", cmd_budget))
     app.add_handler(CommandHandler("undo", cmd_undo))
+    app.add_handler(CommandHandler("redo", cmd_redo))
     app.add_handler(CommandHandler("summary", cmd_summary))
     app.add_handler(CommandHandler("ptoday", cmd_ptoday))
     app.add_handler(CommandHandler("pweek", cmd_pweek))
