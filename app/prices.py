@@ -79,6 +79,88 @@ def get_portfolio_history(holdings, range_str: str) -> tuple[list[str], list[flo
     return result
 
 
+def maybe_take_snapshot() -> bool:
+    """Take today's portfolio snapshot if one doesn't exist yet.
+
+    Captures the live EUR value of every holding and stores it in
+    ``portfolio_snapshots``.  Safe to call from both the dashboard (FastAPI)
+    and the Telegram bot — always fire-and-forget via a thread so it never
+    blocks a response.
+
+    Returns True if a new snapshot was written, False if one already existed
+    or if no holdings are configured.
+    """
+    try:
+        import json
+        from app import database as db_module
+
+        today = date.today()
+        with db_module.get_db() as session:
+            if db_module.get_portfolio_snapshot(session, today):
+                return False  # already taken today
+            holdings = db_module.get_holdings(session)
+
+        if not holdings:
+            return False
+
+        portfolio = get_portfolio_value(holdings)
+        if portfolio["total"] == 0.0:
+            return False
+
+        breakdown = {
+            item["symbol"]: round(item["value"], 6)
+            for item in portfolio["holdings"]
+            if item["value"] is not None
+        }
+
+        with db_module.get_db() as session:
+            db_module.save_portfolio_snapshot(
+                session,
+                today,
+                round(portfolio["total"], 2),
+                json.dumps(breakdown),
+            )
+        logger.info("Portfolio snapshot saved: €%.2f", portfolio["total"])
+        return True
+    except Exception as exc:
+        logger.warning("maybe_take_snapshot failed: %s", exc)
+        return False
+
+
+def get_portfolio_history_from_snapshots(range_str: str) -> tuple[list[str], list[float]]:
+    """Return (labels, values) of portfolio history read from DB snapshots.
+
+    Falls back to empty lists if no snapshots exist yet — callers should
+    check ``len(values) < 2`` and fall back to the yfinance path if needed.
+    """
+    try:
+        from app import database as db_module
+
+        today = date.today()
+        range_days: dict[str, int] = {
+            "1D": 1, "7D": 7, "14D": 14, "30D": 30, "90D": 90,
+        }
+        if range_str in range_days:
+            since = today - timedelta(days=range_days[range_str])
+        elif range_str == "YTD":
+            since = date(today.year, 1, 1)
+        else:  # ALL
+            since = None
+
+        with db_module.get_db() as session:
+            snapshots = db_module.get_portfolio_snapshots(session, since=since)
+
+        if not snapshots:
+            return [], []
+
+        labels = [db_module._as_date(s.date).strftime("%b %d") for s in snapshots]
+        values = [round(s.total_eur, 2) for s in snapshots]
+        return labels, values
+    except Exception as exc:
+        logger.warning("get_portfolio_history_from_snapshots failed: %s", exc)
+        return [], []
+
+
 def get_portfolio_projection(holdings, symbol: str, years: int,
                               history_years: int | None = None) -> dict | None:
     """CAGR + volatility-cone projection for total portfolio or a single non-crypto holding.

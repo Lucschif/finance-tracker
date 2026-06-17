@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import functools
 import logging
 from datetime import date, timedelta
@@ -430,11 +431,17 @@ async def cmd_pundo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 @_owner_only
 async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    # Fire-and-forget snapshot so any daily message (transaction, command, etc.)
+    # guarantees today's portfolio value is captured even without a dashboard visit.
+    asyncio.create_task(asyncio.to_thread(prices_module.maybe_take_snapshot))
+
     text = update.message.text.strip()
 
     # Productivity entries short-circuit before the finance parser
     productivity = parse_productivity(text)
     if productivity:
+        today = date.today()
+        week_start = today - timedelta(days=today.weekday())
         with get_db() as session:
             add_productivity_session(
                 session,
@@ -442,9 +449,17 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 category=productivity["category"],
                 note=productivity.get("note", ""),
             )
+            all_sessions = get_productivity_sessions(session)
+        today_total = sum(s.duration_hours for s in all_sessions if _as_date(s.date) == today)
+        week_cat_total = sum(
+            s.duration_hours for s in all_sessions
+            if s.category == productivity["category"] and _as_date(s.date) >= week_start
+        )
         note_line = f"\n📝 _{productivity['note']}_" if productivity.get("note") else ""
         await update.message.reply_text(
-            f"⏱ *+{_fmt_hours(productivity['duration_hours'])}* — {productivity['category']}{note_line}",
+            f"⏱ *+{_fmt_hours(productivity['duration_hours'])}* — {productivity['category']}{note_line}\n"
+            f"Today: *{_fmt_hours(today_total)}* total  ·  "
+            f"{productivity['category']} this week: *{_fmt_hours(week_cat_total)}*",
             parse_mode="Markdown",
         )
         return

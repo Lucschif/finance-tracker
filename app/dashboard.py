@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
@@ -24,6 +25,7 @@ from app import forecasts as forecasts_module
 from app import prices as prices_module
 
 _ptb_app = None
+_seen_update_ids: set[int] = set()  # deduplicates webhook retries / dual-instance deliveries
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
@@ -114,28 +116,95 @@ def _auth(credentials: HTTPBasicCredentials = Depends(_security)):
 
 # ── Chart helpers ─────────────────────────────────────────────────────────────
 
-def _build_chart_data(txns, initial_balance: float, range_str: str):
+def _range_start(range_str: str, txns=None) -> date:
     today = date.today()
     if range_str == "1D":
-        start_date = today - timedelta(days=1)
+        return today - timedelta(days=1)
     elif range_str == "7D":
-        start_date = today - timedelta(days=7)
+        return today - timedelta(days=7)
     elif range_str == "14D":
-        start_date = today - timedelta(days=14)
+        return today - timedelta(days=14)
     elif range_str == "30D":
-        start_date = today - timedelta(days=30)
+        return today - timedelta(days=30)
     elif range_str == "90D":
-        start_date = today - timedelta(days=90)
+        return today - timedelta(days=90)
     elif range_str == "YTD":
-        start_date = date(today.year, 1, 1)
-    else:
+        return date(today.year, 1, 1)
+    else:  # ALL
         if txns:
             try:
-                start_date = min(db._as_date(t.date) for t in txns)
+                return min(db._as_date(t.date) for t in txns)
             except Exception:
-                start_date = today
-        else:
-            start_date = today
+                pass
+        return today
+
+
+def _build_net_worth_chart(txns, cash_baseline: float, range_str: str):
+    """True net worth chart: cash (from transactions) + investments (from daily snapshots).
+
+    For each day in the range:
+      net_worth = cash_baseline + Σ(income - expense up to that day)
+                + portfolio_snapshot_value on that day (forward-filled if missing)
+
+    Falls back to the cash-only chart if no snapshots exist yet.
+    """
+    today = date.today()
+    requested_start = _range_start(range_str, txns)
+
+    # Load snapshots for the requested range (or all if ALL)
+    since = None if range_str == "ALL" else requested_start
+    with db.get_db() as session:
+        snapshots = db.get_portfolio_snapshots(session, since=since)
+
+    if not snapshots:
+        # No snapshots yet — fall back to cash-only chart (old behaviour)
+        return _build_chart_data_cash(txns, cash_baseline, range_str)
+
+    snap_by_date = {db._as_date(s.date): s.total_eur for s in snapshots}
+    earliest_snap = min(snap_by_date)
+
+    # Effective start: can't go back further than the earliest snapshot
+    start_date = max(requested_start, earliest_snap)
+
+    # Build per-day cash delta from transactions
+    daily_delta: dict[date, float] = defaultdict(float)
+    for t in txns:
+        d = db._as_date(t.date)
+        if t.type == "income":
+            daily_delta[d] += t.amount
+        elif t.type == "expense":
+            daily_delta[d] -= t.amount
+
+    # Roll cash forward to start_date
+    cash = cash_baseline
+    for t in txns:
+        d = db._as_date(t.date)
+        if d < start_date:
+            if t.type == "income":
+                cash += t.amount
+            elif t.type == "expense":
+                cash -= t.amount
+
+    labels: list[str] = []
+    values: list[float] = []
+    current_date = start_date
+    last_inv = snapshots[0].total_eur  # seed; will be overwritten on first matching day
+
+    while current_date <= today:
+        cash += daily_delta.get(current_date, 0.0)
+        if current_date in snap_by_date:
+            last_inv = snap_by_date[current_date]  # forward-fill on non-snapshot days
+        labels.append(current_date.strftime("%b %d"))
+        values.append(round(cash + last_inv, 2))
+        current_date += timedelta(days=1)
+
+    return labels, values
+
+
+def _build_chart_data_cash(txns, cash_baseline: float, range_str: str):
+    """Cash-only net worth chart — used as fallback before snapshots accumulate."""
+    today = date.today()
+    start_date = _range_start(range_str, txns)
 
     daily_delta: dict[date, float] = defaultdict(float)
     for t in txns:
@@ -145,23 +214,23 @@ def _build_chart_data(txns, initial_balance: float, range_str: str):
         elif t.type == "expense":
             daily_delta[d] -= t.amount
 
-    base_nw = initial_balance
+    base = cash_baseline
     for t in txns:
         d = db._as_date(t.date)
         if d < start_date:
             if t.type == "income":
-                base_nw += t.amount
+                base += t.amount
             elif t.type == "expense":
-                base_nw -= t.amount
+                base -= t.amount
 
     labels: list[str] = []
     values: list[float] = []
-    current_nw = base_nw
+    current = base
     current_date = start_date
     while current_date <= today:
-        current_nw += daily_delta.get(current_date, 0.0)
+        current += daily_delta.get(current_date, 0.0)
         labels.append(current_date.strftime("%b %d"))
-        values.append(round(current_nw, 2))
+        values.append(round(current, 2))
         current_date += timedelta(days=1)
 
     if len(labels) > 90:
@@ -217,8 +286,21 @@ async def webhook(request: Request) -> Response:
     if config.TELEGRAM_WEBHOOK_SECRET and secret != config.TELEGRAM_WEBHOOK_SECRET:
         raise HTTPException(status_code=403, detail="Invalid secret")
     data = await request.json()
+
+    # Deduplicate: Telegram retries on slow responses; Render cold-starts can briefly
+    # run two instances that both receive the same update.
+    update_id = data.get("update_id")
+    if update_id is not None:
+        if update_id in _seen_update_ids:
+            return Response(status_code=200)
+        _seen_update_ids.add(update_id)
+        if len(_seen_update_ids) > 2000:  # prevent unbounded growth
+            _seen_update_ids.discard(next(iter(_seen_update_ids)))
+
     update = Update.de_json(data, _ptb_app.bot)
-    await _ptb_app.process_update(update)
+    # Process in background so we return 200 immediately — prevents Telegram retries
+    # caused by slow NLP parsing (Claude Haiku) exceeding the webhook timeout.
+    asyncio.create_task(_ptb_app.process_update(update))
     return Response(status_code=200)
 
 
@@ -231,28 +313,33 @@ async def financials_page(request: Request, _: None = Depends(_auth)):
     with db.get_db() as session:
         accounts = db.get_accounts(session)
         holdings = db.get_holdings(session)
-        initial_balance = sum(a.initial_balance or 0 for a in accounts)
         all_txns = db.get_active_transactions(session)
         total_income = sum(t.amount for t in all_txns if t.type == "income")
         total_expense = sum(t.amount for t in all_txns if t.type == "expense")
         monthly = budget_module.monthly_summary(session)
-        chart_labels, chart_values = _build_chart_data(all_txns, initial_balance, range_str)
         activity_feed = _build_activity_feed(all_txns)
 
-    # Live portfolio value + history (fetched outside the DB session — may call yfinance)
+    # Live portfolio value (fetched outside the DB session — may call yfinance)
     portfolio = prices_module.get_portfolio_value(holdings) if holdings else {"holdings": [], "total": 0.0}
-    inv_chart_labels, inv_chart_values = prices_module.get_portfolio_history(holdings, range_str) if holdings else ([], [])
 
-    # Net worth = cash baseline + transaction delta + live investments
+    # Investments over time: use DB snapshots (accurate FX, true history).
+    # Fall back to yfinance only when snapshots are too sparse (<2 points).
+    inv_chart_labels, inv_chart_values = prices_module.get_portfolio_history_from_snapshots(range_str)
+    if len(inv_chart_values) < 2 and holdings:
+        inv_chart_labels, inv_chart_values = prices_module.get_portfolio_history(holdings, range_str)
+
+    # Fire-and-forget: save today's snapshot if not yet taken
+    asyncio.create_task(asyncio.to_thread(prices_module.maybe_take_snapshot))
+
+    # KPI values
     cash_baseline = sum(a.initial_balance or 0 for a in accounts if a.name.lower() == "cash")
     inv_baseline  = sum(a.initial_balance or 0 for a in accounts if a.name.lower() != "cash")
     investments_value = portfolio["total"] if holdings else inv_baseline
-    live_cash = cash_baseline + total_income - total_expense  # cash moves with every income/expense
+    live_cash = cash_baseline + total_income - total_expense
     live_nw = live_cash + investments_value
-    full_baseline = cash_baseline + investments_value
 
-    # Rebuild chart with full baseline (cash + portfolio)
-    chart_labels, chart_values = _build_chart_data(all_txns, full_baseline, range_str)
+    # True net worth chart: cash (transactions) + investments (snapshots per day)
+    chart_labels, chart_values = _build_net_worth_chart(all_txns, cash_baseline, range_str)
 
     # Forecasts (pre-computed offline, read from DB — may be None if never computed)
     total_forecast = forecasts_module.get_latest_forecast("TOTAL")
@@ -263,7 +350,7 @@ async def financials_page(request: Request, _: None = Depends(_auth)):
         "live_nw": live_nw,
         "cash_baseline": live_cash,
         "investments_value": investments_value,
-        "initial_balance": full_baseline,
+        "initial_balance": cash_baseline + investments_value,
         "accounts": [a for a in accounts if (a.initial_balance or 0) > 0],
         "portfolio": portfolio,
         "monthly_change": monthly["net_cashflow"],
@@ -290,7 +377,12 @@ async def investments_page(request: Request, _: None = Depends(_auth)):
         holdings = db.get_holdings(session)
 
     portfolio = prices_module.get_portfolio_value(holdings) if holdings else {"holdings": [], "total": 0.0}
-    inv_chart_labels, inv_chart_values = prices_module.get_portfolio_history(holdings, range_str) if holdings else ([], [])
+
+    inv_chart_labels, inv_chart_values = prices_module.get_portfolio_history_from_snapshots(range_str)
+    if len(inv_chart_values) < 2 and holdings:
+        inv_chart_labels, inv_chart_values = prices_module.get_portfolio_history(holdings, range_str)
+
+    asyncio.create_task(asyncio.to_thread(prices_module.maybe_take_snapshot))
     total_forecast = forecasts_module.get_latest_forecast("TOTAL")
     forecast_symbols = forecasts_module.get_forecast_symbols()
 

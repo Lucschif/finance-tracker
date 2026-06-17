@@ -4,7 +4,7 @@ import re
 from contextlib import contextmanager
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Column, Date, DateTime, Float, Integer, String, Text, text
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy import create_engine
 
@@ -77,6 +77,17 @@ class ProductivitySession(Base):
     category = Column(String, nullable=False)   # Work | Study | Personal Project
     note = Column(String, nullable=True)
     date = Column(Date, default=date.today)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PortfolioSnapshot(Base):
+    __tablename__ = "portfolio_snapshots"
+    __table_args__ = (UniqueConstraint("date", name="uq_portfolio_snapshots_date"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(Date, nullable=False)
+    total_eur = Column(Float, nullable=False)
+    breakdown_json = Column(Text, nullable=True)  # JSON {"SYMBOL": value, ...}
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -303,3 +314,44 @@ def undo_last_productivity_session(db: Session) -> ProductivitySession | None:
     if s:
         db.delete(s)
     return s
+
+
+# ── Portfolio snapshots ───────────────────────────────────────────────────────
+
+def get_portfolio_snapshot(db: Session, snapshot_date: date) -> PortfolioSnapshot | None:
+    return db.query(PortfolioSnapshot).filter(PortfolioSnapshot.date == snapshot_date).first()
+
+
+def save_portfolio_snapshot(
+    db: Session,
+    snapshot_date: date,
+    total_eur: float,
+    breakdown_json: str = "",
+) -> PortfolioSnapshot:
+    existing = get_portfolio_snapshot(db, snapshot_date)
+    if existing:
+        existing.total_eur = total_eur
+        existing.breakdown_json = breakdown_json
+        db.flush()
+        return existing
+    snap = PortfolioSnapshot(
+        date=snapshot_date,
+        total_eur=total_eur,
+        breakdown_json=breakdown_json or None,
+    )
+    db.add(snap)
+    db.flush()
+    return snap
+
+
+def get_portfolio_snapshots(
+    db: Session,
+    since: date | None = None,
+    until: date | None = None,
+) -> list[PortfolioSnapshot]:
+    q = db.query(PortfolioSnapshot)
+    if since:
+        q = q.filter(PortfolioSnapshot.date >= since)
+    if until:
+        q = q.filter(PortfolioSnapshot.date <= until)
+    return q.order_by(PortfolioSnapshot.date.asc()).all()
